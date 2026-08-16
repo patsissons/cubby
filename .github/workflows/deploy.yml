@@ -1,0 +1,51 @@
+# Deploys pb_public, pb_hooks, and pb_migrations to the PocketHost instance
+# on every push to main, after verifying that committed build artifacts match
+# a fresh build.
+#
+# Ships inert in the template: the deploy step runs only when the PHIO_*
+# secrets exist. Set PHIO_USERNAME, PHIO_PASSWORD, and PHIO_INSTANCE_NAME in
+# repo secrets to enable it. Never touches pb_data.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      PHIO_USERNAME: ${{ secrets.PHIO_USERNAME }}
+      PHIO_PASSWORD: ${{ secrets.PHIO_PASSWORD }}
+      PHIO_INSTANCE_NAME: ${{ secrets.PHIO_INSTANCE_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Rebuild artifacts
+        run: npm run build
+
+      - name: Fail if committed artifacts drifted from a fresh build
+        run: |
+          git diff --exit-code || {
+            echo "::error::pb_public artifacts differ from a fresh build. Run 'npm run build' and commit."
+            exit 1
+          }
+
+      - name: Deploy via phio
+        if: env.PHIO_USERNAME != ''
+        run: |
+          npm install -g phio
+          phio deploy -v
+
+      - name: Deploy skipped (no credentials)
+        if: env.PHIO_USERNAME == ''
+        run: echo "PHIO_USERNAME secret not set; verified build only. Add PHIO_USERNAME/PHIO_PASSWORD/PHIO_INSTANCE_NAME secrets to enable deploys."
