@@ -47,6 +47,9 @@ npm run build               # rebuild artifacts after merges
 Because downstream repos only add files (apps, app migrations) and edit
 `cubby.config.json`, merges are usually clean. If a merge conflicts anywhere
 else, treat it as a signal that deployment state leaked into a platform file.
+The cubby-update skill (skills/cubby-update/SKILL.md, also `/cubby:update`)
+automates the full flow: preview, merge, conflict ownership rules, rebuild,
+ship, and live verification.
 
 ## Contributing back
 

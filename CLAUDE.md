@@ -11,7 +11,9 @@ deployment repos, so upstream merges stay clean.
 To build a new app here, follow skills/cubby-new-app/SKILL.md (also exposed
 as /cubby:new-app). To bootstrap a new deployment repo, follow
 skills/cubby-init/SKILL.md (/cubby:init); to stand up or operate a
-deployment, follow skills/cubby-deploy/SKILL.md. The skills are the source of agent truth;
+deployment, follow skills/cubby-deploy/SKILL.md; to pull upstream platform
+updates into a deployment, follow skills/cubby-update/SKILL.md
+(/cubby:update). The skills are the source of agent truth;
 docs/ explains the architecture for humans. Verify work with `npm run dev`
 plus scripts/smoke.mjs, and keep committed artifacts fresh with `npm run
 build` before pushing (CI fails on drift).
