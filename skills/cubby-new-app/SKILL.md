@@ -12,6 +12,7 @@ comes from the `cubby` global.
 ## Scaffold
 
 ```
+npm ci             # once, if node_modules is missing
 npm run new-app <name> -- --title "My App" --description "One line" --icon "🎯"
 ```
 
@@ -36,8 +37,11 @@ pb_public/<name>/
 
 Unknown server paths fall back to the discovery site: `/<name>/settings`
 never reaches the app. Internal navigation must use `location.hash`
-(`#/settings`) with a `hashchange` listener. The template ships a minimal
-router; keep it.
+(`#/settings`) with a `hashchange` listener. Keep the template's hash-based
+routing mechanism; its demo nav and pages are placeholders to replace.
+Query strings on the intact path (`/<name>/?x=y`) do reach the app, but the
+hash is the conservative home for shareable URL state since it also
+composes with hash routes.
 
 ## The cubby API
 
@@ -152,15 +156,20 @@ change and belongs upstream (docs/forking.md).
 
 ## Verify
 
-1. `npm run dev` (add `PB_HTTP=127.0.0.1:8091` if 8090 is busy), open
-   `http://localhost:8090/<name>/`, exercise every feature.
+1. `npm run dev` serves on `http://127.0.0.1:8090` (set
+   `PB_HTTP=127.0.0.1:<port>` if 8090 is busy, and use that host:port in
+   every URL below). Open `/<name>/` and exercise every feature.
 2. If the app has migrations, confirm the collections exist (admin UI at
    `/_/`, superuser local@cubby.test / cubby-local-dev).
 3. `npm run build` so `sites.json` and artifacts are fresh (CI fails on
-   drift), and confirm the app card shows on `http://localhost:8090/`.
+   drift), and confirm the app card shows on the discovery site at `/`.
+
+`scripts/smoke.mjs` tests the foundation itself, not apps; running it is
+not part of adding an app.
 
 ## PR shape
 
 One app directory + optional `_app_<name>_` migrations + regenerated
-`sites.json`. Nothing else. Commit messages describe the app, not the
-scaffolding.
+`sites.json`. `pb_public/cubby.config.json` is a build-time copy of the
+root config: include it if `npm run build` refreshed it, never edit it by
+hand. Nothing else. Commit messages describe the app, not the scaffolding.
