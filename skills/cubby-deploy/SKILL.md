@@ -12,8 +12,11 @@ path; the repo mechanics are in docs/forking.md.
 
 ## 1. Repos and instance
 
-1. Create your deployment repo from the cubby template (GitHub: Use this
-   template). Private is fine.
+1. Create your deployment repo: the cubby-init skill
+   (skills/cubby-init/SKILL.md) creates it, clones the platform repo with
+   shared history, wires upstream/origin remotes, and pushes. (GitHub's
+   "Use this template" button also works but yields unrelated history; see
+   that skill for the tradeoff.)
 2. Create a PocketHost instance at pockethost.io (any paid plan includes
    SFTP deploys and custom domains). Note the instance name and URL.
 3. Edit `cubby.config.json` (the only platform file a deployment edits):

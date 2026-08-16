@@ -23,8 +23,12 @@ an upstream bug: fix it in cubby and merge it down.
 
 ## Creating your deployment
 
-1. On GitHub: Use this template > create your deployment repo (private is
-   fine; naming it after your domain or instance works well).
+1. Create your deployment repo (private is fine; naming it after your
+   domain or instance works well). Prefer a shared-history clone over
+   GitHub's "Use this template" button so `git merge upstream/main` works
+   without `--allow-unrelated-histories`; the cubby-init skill
+   (skills/cubby-init/SKILL.md, also `/cubby:init`) automates the whole
+   thing: create if missing, clone, wire remotes, push.
 2. Create a PocketHost instance (pockethost.io).
 3. Edit `cubby.config.json`: name, title, instanceUrl (and domain if you
    have one; otherwise leave it equal to instanceUrl).

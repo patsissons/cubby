@@ -41,8 +41,9 @@ npm run new-app foo
 
 ## Launch your own
 
-Create a repo from this template, provision a PocketHost instance, edit
-`cubby.config.json`, and follow
+Bootstrap your deployment repo with
+[skills/cubby-init/SKILL.md](skills/cubby-init/SKILL.md), provision a
+PocketHost instance, edit `cubby.config.json`, and follow
 [skills/cubby-deploy/SKILL.md](skills/cubby-deploy/SKILL.md). The same skills
 power AI-assisted workflows: this repo is a Claude Code plugin marketplace
 (`/plugin marketplace add patsissons/cubby`), and the bundled GitHub Action

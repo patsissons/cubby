@@ -1,7 +1,7 @@
 {
   "name": "cubby",
-  "version": "0.1.0",
-  "description": "Build and deploy tiny static web apps on a cubby (PocketBase on PocketHost) platform: app scaffolding, foundation API guidance, and deployment workflow.",
+  "version": "0.2.0",
+  "description": "Build and deploy tiny static web apps on a cubby (PocketBase on PocketHost) platform: deployment repo bootstrap, app scaffolding, foundation API guidance, and deployment workflow.",
   "author": {
     "name": "Patrick Sissons",
     "url": "https://github.com/patsissons"
