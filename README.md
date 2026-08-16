@@ -41,13 +41,31 @@ npm run new-app foo
 
 ## Launch your own
 
-Bootstrap your deployment repo with
-[skills/init/SKILL.md](skills/init/SKILL.md), provision a
-PocketHost instance, edit `cubby.config.json`, and follow
-[skills/deploy/SKILL.md](skills/deploy/SKILL.md). The same skills
-power AI-assisted workflows: this repo is a Claude Code plugin marketplace
-(`/plugin marketplace add patsissons/cubby`), and the bundled GitHub Action
-can turn "new app" issues into PRs.
+1. Create an instance at [pockethost.io](https://pockethost.io) (any paid
+   plan includes SFTP deploys and custom domains) and note its name:
+   `<instance>.pockethost.io`.
+2. In Claude Code, install the cubby plugin:
+
+   ```
+   /plugin marketplace add patsissons/cubby
+   /plugin install cubby@cubby
+   ```
+
+3. Run `/cubby:init <you>/<repo>`. It creates the repo if needed, clones
+   the platform with shared history (so upstream merges stay clean), fills
+   `cubby.config.json` with your name, domain, and instance URL (inferring
+   defaults from the repo name), and pushes.
+4. In the new repo, run `/cubby:deploy`. It links the instance via phio,
+   runs the first deploy (including the required instance power cycle),
+   and verifies the discovery site, hooks, and collections.
+5. Finish in the dashboards as the skill directs: AI provider keys, OAuth
+   apps, GitHub secrets for CI deploys, and optionally a custom domain and
+   the issue-to-PR pipeline. `/cubby:new-app` builds apps;
+   `/cubby:update` pulls in platform updates later.
+
+Prefer doing it by hand? The same steps live in
+[skills/init/SKILL.md](skills/init/SKILL.md) and
+[skills/deploy/SKILL.md](skills/deploy/SKILL.md).
 
 ## Layout
 

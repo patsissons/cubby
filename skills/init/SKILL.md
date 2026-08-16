@@ -1,25 +1,40 @@
 ---
 name: init
 argument-hint: <owner/name> [--public] [--upstream owner/repo]
-description: Bootstrap a new cubby deployment repo. Creates the GitHub repo if it does not exist, clones the cubby template with shared git history, wires upstream and origin remotes, and pushes. Use when starting a brand new cubby deployment or system, before any instance setup; hand off to the deploy skill afterward.
+description: Bootstrap a new cubby deployment repo. Creates the GitHub repo if it does not exist, clones the cubby template with shared git history, wires upstream and origin remotes, configures cubby.config.json for the deployment (name, domain, instance URL), and pushes. Use when starting a brand new cubby deployment or system, before any instance setup; hand off to the deploy skill afterward.
 ---
 
 # Initializing a cubby deployment repo
 
 This skill takes someone from "I want my own cubby" to a pushed deployment
-repo with correct remotes. It creates and wires repos only; instance setup
-(PocketHost, config, OAuth, keys) is the deploy skill, which this
-hands off to.
+repo with correct remotes and a cubby.config.json that already describes
+their deployment. Instance-side setup (PocketHost secrets, OAuth, first
+deploy) is the deploy skill, which this hands off to.
 
 ## Gather these first
 
-Ask the user for anything not already stated:
+Infer defaults from the repo/directory name NAME, present them to the user
+for confirmation in one shot, and only ask about the ones they want to
+change. SLUG below means NAME lowercased with every character outside
+[a-z0-9-] replaced by "-" (so `example.com` becomes `example-com`).
 
-- **Repo name**: naming it after the deployment's domain or instance works
-  well (e.g. `example.com`, `my-cubby`).
+- **Repo name (NAME)**: naming it after the deployment's domain or instance
+  works well (e.g. `example.com`, `my-cubby`). No default; required.
 - **Visibility**: private by default; public is fine too.
 - **Upstream cubby repo**: the platform repo to build on. Default
   `patsissons/cubby`; a fork of it also works.
+- **Deployment name**: config `name`. Default SLUG.
+- **Title**: config `title`. Domain-like NAME (the same contains-a-dot
+  test as Domain below) stays as-is (`example.com`); otherwise hyphens
+  become spaces, title cased (`my-cubby` -> `My Cubby`).
+- **PocketHost instance name**: default SLUG. If phio is authenticated,
+  check `npx phio list`: an instance named exactly SLUG confirms the
+  default; no such instance means ask the user which listed instance to
+  use (or whether one still needs creating) instead of guessing. The
+  instance URL is `https://<instance>.pockethost.io`.
+- **Domain**: config `domain`. If NAME looks like a domain (contains a
+  dot), default `https://NAME`; otherwise default to the instance URL (the
+  convention for no custom domain).
 
 ## Prerequisites
 
@@ -58,7 +73,7 @@ Resume rules:
 |---|---|
 | missing | do step 1 |
 | exists, empty | skip step 1 |
-| exists, has commits sharing history with UPSTREAM | already pushed: ensure a local clone and both remotes exist, then hand off. No local repo yet? Clone the new repo itself, add the upstream remote, fetch, then run the shared-history test |
+| exists, has commits sharing history with UPSTREAM | already pushed: ensure a local clone and both remotes exist; if cubby.config.json is not configured, run steps 3 and 4 (the configure commit must be pushed too); then step 5 and hand off. No local repo yet? Clone the new repo itself, add the upstream remote, fetch, then run the shared-history test |
 | exists, has unrelated commits | STOP and ask; never push into it |
 
 | Local NAME directory | Action |
@@ -70,8 +85,9 @@ Resume rules:
 
 To test shared history: `git merge-base main upstream/main` succeeds (after
 `git fetch upstream`). When both tables apply, run only what is still
-missing; step 3's push is a no-op to skip when origin/main already matches
-local main, in which case go straight to step 4 and hand off.
+missing: skip step 3 when cubby.config.json already holds the deployment's
+values (not the upstream template's), and skip step 4's push when
+origin/main already matches local main.
 
 ## Steps
 
@@ -90,14 +106,16 @@ local main, in which case go straight to step 4 and hand off.
    git remote add origin git@github.com:OWNER/NAME.git
    ```
 
-   SSH vs https for origin: match how the user's other GitHub clones
-   authenticate (`git -C <some existing repo> remote get-url origin`);
-   if there is nothing to match, ask.
+   SSH vs https for origin (applies to 2b as well): match how the user's
+   other GitHub clones authenticate
+   (`git -C <some existing repo> remote get-url origin`); if there is
+   nothing to match, ask.
 
    **2b. Directory already exists (empty or dotfiles only):** clone refuses
-   a non-empty directory, so init in place. Untracked files survive the
-   reset as long as the platform repo tracks no colliding paths, which
-   holds for the dotfiles this row allows (.claude/, .DS_Store):
+   a non-empty directory, so init in place. `git reset --hard` silently
+   overwrites untracked files at paths upstream tracks, so confirm the
+   collision set is empty first: `git ls-tree upstream/main .claude
+   .DS_Store` (after the fetch) must print nothing.
 
    ```
    cd NAME
@@ -108,19 +126,32 @@ local main, in which case go straight to step 4 and hand off.
    git remote add origin git@github.com:OWNER/NAME.git
    ```
 
-3. **Push** (safe to re-run; also the resume point when only the push is
+3. **Configure the deployment.** Edit `cubby.config.json` (repo root) with
+   the confirmed values: `name`, `title`, `domain`, `instanceUrl`. Leave
+   `oauthProviders`, `ai`, and `reservedNames` as upstream ships them
+   unless the user asked otherwise. Then rebuild so the served copy and
+   manifest match, and commit:
+
+   ```
+   npm ci
+   npm run build
+   git add -A && git commit -m "Configure deployment: <config name value>"
+   ```
+
+4. **Push** (safe to re-run; also the resume point when only the push is
    missing):
 
    ```
    git push -u origin main
    ```
 
-4. **Verify:** `git remote -v` shows origin = the new repo, upstream = the
-   platform repo; `git status` is clean; `git log origin/main -1` matches
-   upstream's main.
+5. **Verify:** `git remote -v` shows origin = the new repo, upstream = the
+   platform repo; `git status` is clean; origin/main matches local main;
+   and `cubby.config.json` plus its `pb_public/` copy both show the
+   deployment's instanceUrl, not the upstream template's.
 
-Never force-push in this flow, and do not configure secrets, instances, or
-domains here.
+Never force-push in this flow, and do not configure secrets or provision
+instances here (DNS and dashboards belong to the deploy skill).
 
 ## If the repo was already created from the template button
 
@@ -131,9 +162,9 @@ forkability rule forbids anyway.
 
 ## Hand off
 
-The repo is ready. Continue with the deploy skill
-(skills/deploy/SKILL.md): edit cubby.config.json, link the PocketHost
-instance, first deploy, OAuth, keys, and CI secrets. Later platform updates:
+The repo is ready and configured. Continue with the deploy skill
+(skills/deploy/SKILL.md): link the PocketHost instance, first deploy,
+OAuth, keys, and CI secrets. Later platform updates:
 
 ```
 git fetch upstream && git merge upstream/main && npm run build

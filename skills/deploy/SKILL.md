@@ -19,12 +19,15 @@ path; the repo mechanics are in docs/forking.md.
    that skill for the tradeoff.)
 2. Create a PocketHost instance at pockethost.io (any paid plan includes
    SFTP deploys and custom domains). Note the instance name and URL.
-3. Edit `cubby.config.json` (the only platform file a deployment edits):
+3. Verify `cubby.config.json` (the only platform file a deployment edits).
+   The init skill normally fills it already; correct anything stale:
    - `name`, `title`: yours
    - `instanceUrl`: `https://<instance>.pockethost.io`
    - `domain`: your custom domain if any, else same as instanceUrl
    - `oauthProviders`: the providers you will actually configure
    - `ai.models`: keep or trim; aliases are what apps reference
+
+   After edits: `npm run build`, commit, push.
 
 ## 2. First deploy
 
