@@ -47,6 +47,7 @@ export function createRooms(state, pb) {
     let myRecordId = null
     let unsubPresence = null
     let unsubEvents = null
+    let authUnsub = null
 
     function fire(event, ...args) {
       const set = handlers.get(event)
@@ -61,7 +62,12 @@ export function createRooms(state, pb) {
     }
 
     function userOf(record) {
-      return record.expand?.user || { id: record.user }
+      if (record.expand?.user) return record.expand.user
+      // Expands resolve only for signed-in subscribers (users are
+      // auth-gated); the viewer's own record is always available locally.
+      const me = pb.authStore.record
+      if (me && record.user === me.id) return me
+      return { id: record.user }
     }
 
     function onPresenceEvent(e) {
@@ -97,10 +103,26 @@ export function createRooms(state, pb) {
           { filter: pb.filter('room = {:room}', { room: id }), expand: 'user' }
         )
         await refresh()
+        // Subscriptions and expands carry the auth context they were made
+        // with; rebuild them when identity changes so names resolve.
+        if (!authUnsub) {
+          authUnsub = pb.authStore.onChange(() => {
+            resubscribe().catch((err) => console.warn('[cubby.rooms] resubscribe failed:', err))
+          })
+        }
       } catch (err) {
         watching = false
         throw toCubbyError(err)
       }
+    }
+
+    async function resubscribe() {
+      if (!watching) return
+      if (unsubPresence) unsubPresence()
+      if (unsubEvents) unsubEvents()
+      unsubPresence = unsubEvents = null
+      watching = false
+      await subscribe()
     }
 
     async function refresh() {
@@ -113,6 +135,9 @@ export function createRooms(state, pb) {
         const user = userOf(record)
         present.set(user.id, { user, state: record.state || {}, recordId: record.id })
       }
+      // Built-in event: the presence map was rebuilt (initial load, rejoin,
+      // or auth change); apps re-render their roster here.
+      fire('room.sync')
     }
 
     async function upsertPresence(patch) {
@@ -160,8 +185,10 @@ export function createRooms(state, pb) {
 
       /**
        * Register a handler. Built-in events: 'user.join' (user),
-       * 'user.leave' (user), 'user.state' (prev, next, user). Anything else
-       * is a custom event fired by emit: handler(payload, user).
+       * 'user.leave' (user), 'user.state' (prev, next, user), and
+       * 'room.sync' (no args; the roster was rebuilt after load, rejoin,
+       * or an identity change). Anything else is a custom event fired by
+       * emit: handler(payload, user).
        * @param {string} event
        * @param {Function} fn
        * @returns {() => void} unsubscribe
@@ -188,6 +215,9 @@ export function createRooms(state, pb) {
         }
         await subscribe()
         await upsertPresence({})
+        // Re-pull the roster under the joined identity so expands (names)
+        // resolve even when the subscription predates sign-in.
+        await refresh()
         joined = true
         stopHeartbeat()
         heartbeatTimer = setInterval(() => {
@@ -218,8 +248,8 @@ export function createRooms(state, pb) {
         if (!pb.authStore.isValid) {
           throw new CubbyError('auth_required', 'sign in before emitting room events')
         }
-        if (typeof event !== 'string' || !event || event.startsWith('user.')) {
-          throw new CubbyError('bad_request', 'custom event names must not start with "user."')
+        if (typeof event !== 'string' || !event || event.startsWith('user.') || event.startsWith('room.')) {
+          throw new CubbyError('bad_request', 'custom event names must not start with "user." or "room."')
         }
         try {
           await events().create({ room: id, event, payload, user: pb.authStore.record.id })
@@ -250,6 +280,10 @@ export function createRooms(state, pb) {
         if (unsubPresence) unsubPresence()
         if (unsubEvents) unsubEvents()
         unsubPresence = unsubEvents = null
+        if (authUnsub) {
+          authUnsub()
+          authUnsub = null
+        }
         present.clear()
       },
     }

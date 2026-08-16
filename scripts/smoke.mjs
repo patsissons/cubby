@@ -111,8 +111,10 @@ await test('db: guestbook create and list', async () => {
     message: `smoke test at ${new Date().toISOString()}`,
     user: testUser.id,
   })
-  const list = await cubby.db.collection('guestbook').getList(1, 5, { sort: '-created' })
-  assert.ok(list.items.some((r) => r.id === created.id))
+  const list = await cubby.db.collection('guestbook').getList(1, 5, { sort: '-created', expand: 'user' })
+  const mine = list.items.find((r) => r.id === created.id)
+  assert.ok(mine)
+  assert.equal(mine.expand?.user?.name, 'Smoke Tester', 'signed-in viewers resolve author names')
 })
 
 await test('db: realtime subscribe receives create events', async () => {
@@ -234,8 +236,11 @@ await test('rooms: join, presence visibility across clients', async () => {
   await roomA.join()
   const joinedUser = await joinSeen.promise
   assert.equal(joinedUser.id, testUser.id)
+  assert.equal(joinedUser.name, 'Smoke Tester', 'signed-in watchers resolve names via expand')
   assert.ok(roomA.id === 'hello/smoke-lobby')
-  assert.ok(roomA.users.some((u) => u.user.id === testUser.id))
+  const selfEntry = roomA.users.find((u) => u.user.id === testUser.id)
+  assert.ok(selfEntry)
+  assert.equal(selfEntry.user.name, 'Smoke Tester', 'own roster entry resolves the name')
 })
 
 await test('rooms: updateUserState propagates', async () => {
@@ -270,6 +275,37 @@ await test('rooms: leave emits user.leave', async () => {
 
 await test('rooms: emit rejects reserved and unauthenticated use', async () => {
   await assert.rejects(() => roomA.emit('user.fake', {}), (e) => e.code === 'bad_request')
+  await assert.rejects(() => roomA.emit('room.fake', {}), (e) => e.code === 'bad_request')
+})
+
+await test('rooms: names resolve after signing in mid-watch', async () => {
+  const { default: cubby3 } = await import('../pb_public/js/foundation.esm.js?window3')
+  cubby3.configure({ app: 'hello', instanceUrl: BASE })
+  await cubby3.ready
+
+  const occupied = cubby.rooms.room('smoke-lobby2')
+  await occupied.join()
+
+  const watcher = cubby3.rooms.room('smoke-lobby2')
+  await watcher.watch()
+  const anonEntry = watcher.users.find((u) => u.user.id === testUser.id)
+  assert.ok(anonEntry, 'anonymous watcher sees presence')
+  assert.ok(!anonEntry.user.name, 'anonymous watcher cannot resolve names (auth-gated)')
+
+  // Signing in must rebuild the subscription and roster with the new auth.
+  cubby3._pb.authStore.save(impersonated2.token, impersonated2.record)
+  const deadline = Date.now() + 5000
+  let named
+  while (Date.now() < deadline) {
+    named = watcher.users.find((u) => u.user.id === testUser.id)
+    if (named?.user?.name) break
+    await new Promise((r) => setTimeout(r, 200))
+  }
+  assert.equal(named?.user?.name, 'Smoke Tester', 'names resolve after mid-watch sign-in')
+
+  await watcher.leave()
+  await occupied.leave()
+  cubby3._pb.authStore.clear()
 })
 
 await test('hooks: sweep endpoint responds', async () => {

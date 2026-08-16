@@ -177,6 +177,7 @@ const room = cubby.rooms.room('lobby')            // namespaced '<app>/lobby'
 room.on('user.join',  (user) => {})
 room.on('user.leave', (user) => {})
 room.on('user.state', (prev, next, user) => {})
+room.on('room.sync',  () => {})                   // roster rebuilt (load, rejoin, identity change)
 room.on('announce',   (payload, user) => {})      // custom events
 
 await room.watch()                                // observe only; works signed out
@@ -188,6 +189,12 @@ await room.leave()
 
 cubby.rooms.room('otherapp/lobby')                // cross-app room, explicit
 ```
+
+Custom event names must not start with `user.` or `room.` (reserved for
+built-ins). User names in presence and events resolve only for signed-in
+subscribers (user profiles are auth-gated); the client rebuilds its
+subscriptions and roster on identity changes and fires `room.sync` so UIs
+can re-render.
 
 Implementation: `rooms_presence` holds one row per (room, user) with a
 `seen` heartbeat; `rooms_events` holds fire-and-forget event rows. Realtime

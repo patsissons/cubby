@@ -115,6 +115,7 @@ const room = cubby.rooms.room('lobby')   // namespaced '<app>/lobby'
 room.on('user.join', (user) => {})
 room.on('user.leave', (user) => {})
 room.on('user.state', (prev, next, user) => {})
+room.on('room.sync', () => {})           // roster rebuilt; re-render your user list here
 room.on('wave', (payload, user) => {})   // custom events
 await room.watch()                       // observe only; works signed out
 await room.join()                        // requires auth; heartbeats automatically
@@ -125,7 +126,9 @@ await room.leave()
 ```
 
 SSE transport: expect 100-500ms latency. Custom event names must not start
-with `user.`.
+with `user.` or `room.`. User names resolve only for signed-in viewers
+(profiles are auth-gated): render `user.name || 'someone'` and re-render on
+`room.sync`.
 
 `pb_public/hello/app.js` is the working reference for every one of these.
 

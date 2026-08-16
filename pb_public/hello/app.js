@@ -77,6 +77,10 @@ async function wireGuestbook() {
   // Realtime keeps every window in sync; expand is unavailable in the event
   // payload for creates from others, so just refetch (cheap at this size).
   await guestbook.subscribe('*', refresh)
+  // Names only resolve for signed-in viewers, so refetch on identity change.
+  cubby.identityChanged(() => {
+    refresh().catch((err) => console.warn('guestbook refresh:', err))
+  })
 }
 
 // ---- notes (fs) -----------------------------------------------------------
@@ -140,6 +144,7 @@ async function wireRooms() {
   lobby.on('wave', (payload, user) => {
     note(`${user.name || 'someone'} waves ${payload.emoji || '👋'}`)
   })
+  lobby.on('room.sync', render)
 
   $('announce').onclick = () =>
     lobby.emit('wave', { emoji: '👋' }).catch((err) => note(`wave failed: ${err.message}`))
