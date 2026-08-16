@@ -1,0 +1,62 @@
+# Issue -> PR -> merge -> live.
+#
+# Two modes:
+#  1. Automation: labeling an issue `new-app` makes Claude build the app as a
+#     PR using the cubby-new-app skill.
+#  2. Interactive: mentioning @claude in issue/PR comments (review feedback
+#     like "make the buttons bigger") continues work on the same branch.
+#
+# Ships inert: without ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN secrets
+# the job skips. Install the Claude GitHub App on the repo to enable
+# (github.com/apps/claude). Merging the PR deploys via deploy.yml.
+name: claude
+
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+jobs:
+  claude:
+    if: |
+      (github.event_name == 'issues' && github.event.label.name == 'new-app') ||
+      (github.event_name != 'issues' && contains(github.event.comment.body, '@claude'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+      actions: read
+    env:
+      HAS_AUTH: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+    steps:
+      - name: Skip without auth secret
+        if: env.HAS_AUTH != 'true'
+        run: echo "No ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN secret; skipping."
+
+      - uses: actions/checkout@v4
+        if: env.HAS_AUTH == 'true'
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        if: env.HAS_AUTH == 'true'
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: anthropics/claude-code-action@v1
+        if: env.HAS_AUTH == 'true'
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          label_trigger: "new-app"
+          trigger_phrase: "@claude"
+          # Automation mode (explicit prompt) only for labeled issues;
+          # comments run interactive mode.
+          prompt: ${{ github.event_name == 'issues' && 'Implement the app described in this issue using the cubby-new-app skill (skills/cubby-new-app/SKILL.md) and open a pull request. The PR may only touch the new app directory under pb_public/, optional pb_migrations/*_app_<name>_* migrations, and the regenerated sites.json. Run npm ci and npm run build before committing so artifacts are fresh.' || '' }}
+          claude_args: "--max-turns 40"

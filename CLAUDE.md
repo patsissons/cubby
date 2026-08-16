@@ -1,0 +1,16 @@
+# cubby
+
+One repo, one PocketHost (PocketBase) instance, many tiny static web apps:
+each lives in pb_public/<name>/, is served at /<name>/, and gets database,
+file storage, OAuth identity, AI chat, and rooms from the global `cubby`
+object loaded via /js/foundation.js. The forkability rule governs every
+change: all deployment-specific state lives in cubby.config.json and app
+directories (plus their app migrations); platform files are never edited in
+deployment repos, so upstream merges stay clean.
+
+To build a new app here, follow skills/cubby-new-app/SKILL.md (also exposed
+as /cubby:new-app). To stand up or operate a deployment, follow
+skills/cubby-deploy/SKILL.md. The skills are the source of agent truth;
+docs/ explains the architecture for humans. Verify work with `npm run dev`
+plus scripts/smoke.mjs, and keep committed artifacts fresh with `npm run
+build` before pushing (CI fails on drift).

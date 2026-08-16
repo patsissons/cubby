@@ -1,0 +1,16 @@
+{
+  "name": "cubby",
+  "description": "The cubby micro-app platform's own plugin: skills for building apps in a cubby deployment and for launching your own cubby system.",
+  "owner": {
+    "name": "Patrick Sissons",
+    "url": "https://github.com/patsissons"
+  },
+  "plugins": [
+    {
+      "name": "cubby",
+      "source": "./",
+      "description": "Skills and commands for building cubby micro-apps and deploying cubby systems.",
+      "license": "MIT"
+    }
+  ]
+}

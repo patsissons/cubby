@@ -1,0 +1,39 @@
+name: New app idea
+description: Describe a micro-app; the agent pipeline builds it as a PR.
+title: "[app] "
+labels: [new-app]
+body:
+  - type: input
+    id: app-name
+    attributes:
+      label: App name
+      description: "Lowercase letters, digits, and hyphens only (becomes /<name>/)."
+      placeholder: countdown-timer
+    validations:
+      required: true
+  - type: input
+    id: one-liner
+    attributes:
+      label: One-line description
+      placeholder: A shareable countdown timer for events
+    validations:
+      required: true
+  - type: textarea
+    id: features
+    attributes:
+      label: Features
+      description: What should it do? Bullet points are perfect.
+      placeholder: |
+        - pick a date/time, show a live countdown
+        - shareable via URL hash
+        - confetti at zero
+    validations:
+      required: true
+  - type: textarea
+    id: data
+    attributes:
+      label: Data needs
+      description: "What (if anything) must persist or sync? (guestbook entries, saved files, presence, AI usage...)"
+      placeholder: none, everything lives in the URL hash
+    validations:
+      required: false
