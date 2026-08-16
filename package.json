@@ -1,0 +1,26 @@
+{
+  "name": "cubby",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Micro app host on PocketHost: many tiny static web apps, one PocketBase instance.",
+  "license": "MIT",
+  "repository": "https://github.com/patsissons/cubby",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run build:foundation && npm run build:manifest",
+    "build:foundation": "node foundation/build.mjs",
+    "build:manifest": "node scripts/build-manifest.mjs",
+    "new-app": "node scripts/new-app.mjs",
+    "seed": "node scripts/seed.mjs",
+    "deploy": "phio deploy -v"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "eventsource": "^5.1.0",
+    "pocketbase": "^0.27.3"
+  }
+}

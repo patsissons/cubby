@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hello - Cubby</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="/js/foundation.js" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <h1>👋 Hello</h1>
+      <p class="tagline">Every cubby subsystem, one page.</p>
+
+      <section id="identity-section">
+        <h2>Identity</h2>
+        <div id="identity-status">loading...</div>
+        <div id="identity-actions"></div>
+      </section>
+
+      <section id="guestbook-section">
+        <h2>Guestbook</h2>
+        <p class="hint">Realtime via cubby.db - open two windows.</p>
+        <form id="guestbook-form">
+          <input id="guestbook-input" placeholder="leave a message" maxlength="500" required />
+          <button type="submit">sign</button>
+        </form>
+        <ul id="guestbook-list"></ul>
+      </section>
+
+      <section id="fs-section">
+        <h2>Notes (cubby.fs)</h2>
+        <textarea id="note-text" rows="3" placeholder="a note saved to file storage"></textarea>
+        <div>
+          <button id="note-save">save</button>
+          <button id="note-load">load</button>
+          <span id="note-status"></span>
+        </div>
+      </section>
+
+      <section id="rooms-section">
+        <h2>Who's here (cubby.rooms)</h2>
+        <div id="presence-bar"></div>
+        <button id="announce">broadcast a wave 👋</button>
+        <ul id="room-log"></ul>
+      </section>
+
+      <section id="ai-section">
+        <h2>AI (cubby.ai)</h2>
+        <button id="ai-greet">ask the AI to greet you</button>
+        <blockquote id="ai-output"></blockquote>
+      </section>
+    </main>
+  </body>
+</html>

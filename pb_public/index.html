@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cubby</title>
+    <meta name="description" content="A shelf of tiny web apps, each in its own cubby." />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #faf8f5;
+        --fg: #201d1a;
+        --muted: #77706a;
+        --accent: #c2571b;
+        --accent-soft: #c2571b22;
+        --card: #ffffff;
+        --border: #e7e2da;
+        --shadow: 0 1px 2px rgb(32 29 26 / 0.05), 0 4px 12px rgb(32 29 26 / 0.06);
+        --shadow-hover: 0 2px 4px rgb(32 29 26 / 0.07), 0 10px 24px rgb(32 29 26 / 0.1);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #16130f;
+          --fg: #ede9e3;
+          --muted: #9a938a;
+          --accent: #e8823f;
+          --accent-soft: #e8823f26;
+          --card: #201c17;
+          --border: #362f27;
+          --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 12px rgb(0 0 0 / 0.25);
+          --shadow-hover: 0 2px 4px rgb(0 0 0 / 0.35), 0 10px 24px rgb(0 0 0 / 0.4);
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+        line-height: 1.6;
+        min-height: 100svh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .wrap {
+        width: min(64rem, 100% - 2.5rem);
+        margin-inline: auto;
+      }
+
+      header {
+        padding: 4.5rem 0 2.5rem;
+      }
+
+      .wordmark {
+        display: flex;
+        align-items: baseline;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2.2rem, 6vw, 3.4rem);
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+      }
+
+      h1 .tilt {
+        display: inline-block;
+        transform: rotate(-4deg) translateY(-0.06em);
+        color: var(--accent);
+      }
+
+      .tagline {
+        margin: 0.6rem 0 0;
+        color: var(--muted);
+        font-size: 1.05rem;
+        max-width: 34rem;
+      }
+
+      main {
+        flex: 1;
+        padding-bottom: 4rem;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+        gap: 1rem;
+        padding: 0;
+        margin: 0;
+        list-style: none;
+      }
+
+      .card {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 1.25rem 1.25rem 1.1rem;
+        text-decoration: none;
+        color: inherit;
+        box-shadow: var(--shadow);
+        transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+      }
+
+      .card:hover,
+      .card:focus-visible {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-hover);
+        border-color: var(--accent);
+        outline: none;
+      }
+
+      .card .icon {
+        font-size: 2rem;
+        line-height: 1;
+        width: 3.25rem;
+        height: 3.25rem;
+        display: grid;
+        place-items: center;
+        background: var(--accent-soft);
+        border-radius: 12px;
+      }
+
+      .card h2 {
+        margin: 0.35rem 0 0;
+        font-size: 1.1rem;
+        letter-spacing: -0.01em;
+      }
+
+      .card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.92rem;
+        flex: 1;
+      }
+
+      .card .go {
+        color: var(--accent);
+        font-size: 0.9rem;
+        font-weight: 600;
+      }
+
+      .card .go::after {
+        content: ' →';
+        transition: margin-left 0.15s ease;
+      }
+
+      .card:hover .go::after {
+        margin-left: 0.25rem;
+      }
+
+      .empty {
+        color: var(--muted);
+        border: 1.5px dashed var(--border);
+        border-radius: 14px;
+        padding: 3rem 1.5rem;
+        text-align: center;
+      }
+
+      .empty code {
+        background: var(--accent-soft);
+        padding: 0.1rem 0.4rem;
+        border-radius: 6px;
+      }
+
+      footer {
+        border-top: 1px solid var(--border);
+        padding: 1.1rem 0 1.4rem;
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      footer .wrap {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+
+      #presence {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+      }
+
+      #presence .dot {
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        background: var(--muted);
+        transition: background 0.3s ease;
+      }
+
+      #presence.live .dot {
+        background: #3f9e58;
+        box-shadow: 0 0 0 3px rgb(63 158 88 / 0.2);
+      }
+
+      footer a {
+        color: var(--muted);
+      }
+
+      footer a:hover {
+        color: var(--accent);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .card,
+        .card .go::after {
+          transition: none;
+        }
+      }
+    </style>
+    <script src="/js/foundation.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <div class="wrap">
+        <div class="wordmark">
+          <h1><span class="tilt">c</span>ubby</h1>
+        </div>
+        <p class="tagline" id="tagline">A shelf of tiny web apps, each in its own cubby.</p>
+      </div>
+    </header>
+
+    <main>
+      <div class="wrap">
+        <ul class="grid" id="grid"></ul>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span id="presence"><span class="dot"></span><span id="presence-label">warming up...</span></span>
+        <span>
+          built on <a href="https://github.com/patsissons/cubby">cubby</a> +
+          <a href="https://pocketbase.io">PocketBase</a>
+        </span>
+      </div>
+    </footer>
+
+    <script defer>
+      window.addEventListener('DOMContentLoaded', async () => {
+        const grid = document.getElementById('grid')
+
+        try {
+          const sites = await fetch('/sites.json').then((r) => r.json())
+          if (!sites.length) {
+            grid.outerHTML =
+              '<div class="empty"><p>Nothing on the shelf yet.</p><p>Run <code>npm run new-app &lt;name&gt;</code> to add the first app.</p></div>'
+          } else {
+            for (const site of sites) {
+              const li = document.createElement('li')
+              const a = document.createElement('a')
+              a.className = 'card'
+              a.href = `/${site.name}/`
+              const icon = document.createElement('span')
+              icon.className = 'icon'
+              icon.textContent = site.icon
+              const h2 = document.createElement('h2')
+              h2.textContent = site.title
+              const p = document.createElement('p')
+              p.textContent = site.description
+              const go = document.createElement('span')
+              go.className = 'go'
+              go.textContent = 'open'
+              a.append(icon, h2, p, go)
+              li.append(a)
+              grid.append(li)
+            }
+          }
+        } catch (err) {
+          console.error('sites.json failed', err)
+        }
+
+        // Live flourish: presence count in the root lobby via the platform's
+        // own rooms API. Signed-in visitors join; everyone else just watches.
+        const label = document.getElementById('presence-label')
+        const badge = document.getElementById('presence')
+        try {
+          await cubby.ready
+          if (cubby.config && cubby.config.title) {
+            document.title = cubby.config.title
+          }
+          const lobby = cubby.rooms.room('lobby')
+          const render = () => {
+            const n = lobby.users.length
+            badge.classList.toggle('live', n > 0)
+            label.textContent =
+              n === 0 ? 'nobody else around' : n === 1 ? '1 person poking around' : `${n} people poking around`
+          }
+          lobby.on('user.join', render)
+          lobby.on('user.leave', render)
+          await lobby.watch()
+          if (cubby.identity.user) await lobby.join()
+          render()
+        } catch (err) {
+          console.warn('presence unavailable', err)
+          label.textContent = 'presence offline'
+        }
+      })
+    </script>
+  </body>
+</html>

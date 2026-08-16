@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Template</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="/js/foundation.js" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <h1>Template</h1>
+      <p class="tagline">A cubby micro app. Edit me.</p>
+
+      <!--
+        Internal navigation MUST use hash routing (#/page). Unknown paths on the
+        server fall back to the discovery site, so /myapp/some/page will not
+        reach this app - but /myapp/#/some/page will.
+      -->
+      <nav>
+        <a href="#/">home</a>
+        <a href="#/about">about</a>
+      </nav>
+
+      <section id="view"></section>
+      <footer>
+        <span id="whoami">checking sign-in...</span>
+      </footer>
+    </main>
+  </body>
+</html>

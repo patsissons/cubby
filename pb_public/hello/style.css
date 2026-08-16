@@ -1,0 +1,113 @@
+:root {
+  color-scheme: light dark;
+  --bg: #faf9f7;
+  --fg: #1c1b1a;
+  --muted: #6f6b66;
+  --accent: #c2571b;
+  --card: #ffffff;
+  --border: #e5e1db;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #171512;
+    --fg: #ece9e4;
+    --muted: #9b958d;
+    --accent: #e8823f;
+    --card: #211e1a;
+    --border: #38332d;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1.6;
+}
+
+main {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+h1 {
+  margin-bottom: 0.25rem;
+}
+
+.tagline,
+.hint {
+  color: var(--muted);
+  margin-top: 0;
+}
+
+section {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  margin-top: 1.25rem;
+}
+
+section h2 {
+  margin-top: 0;
+  font-size: 1.05rem;
+}
+
+input,
+textarea {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+button {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  margin-top: 0.5rem;
+}
+
+button:hover {
+  filter: brightness(1.08);
+}
+
+ul {
+  list-style: none;
+  padding: 0;
+}
+
+#guestbook-list li,
+#room-log li {
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+#guestbook-list li .who,
+#room-log li .who {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-left: 0.5rem;
+}
+
+blockquote {
+  border-left: 3px solid var(--accent);
+  margin: 0.75rem 0 0;
+  padding-left: 0.75rem;
+  color: var(--muted);
+  white-space: pre-wrap;
+}

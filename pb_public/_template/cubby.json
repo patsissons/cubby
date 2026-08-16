@@ -1,0 +1,7 @@
+{
+  "name": "_template",
+  "title": "Template",
+  "description": "Starter app copied by npm run new-app.",
+  "icon": "📦",
+  "hidden": true
+}
