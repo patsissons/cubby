@@ -239,7 +239,10 @@ dashboard under Account > Keys) into the `<instance>/` directory.
 - Instances hibernate when idle; the first request after wake is slow.
 - Rate limits: 1000 req/hr/IP, 15 concurrent/IP, 250 concurrent/instance.
   The 20s presence heartbeat spends ~180 req/hr per joined tab.
-- `pb_public` is CDN-cached at the edge; a just-deployed `sites.json` or
-  config may briefly serve stale.
+- `pb_public` is CDN-cached at the edge with `max-age=14400`: deployed
+  changes to static files (including the foundation bundle and app HTML)
+  can serve stale for up to 4 hours. Verify a fresh deploy with a
+  cache-busting query (`/js/foundation.js?v=anything`), which bypasses the
+  cached key and hits the origin.
 - Hooks run in a synchronous JSVM: no Node APIs, no fetch, no timers, no
   Promises. `$http.send` buffers whole responses.

@@ -81,8 +81,13 @@ against the deployment's own config, and ships them to the instance.
 
    ```
    curl https://<instance>/_cubby/cron/sweep        # hooks loaded
-   curl https://<instance>/js/foundation.js | head -c 80   # new version banner
+   curl "https://<instance>/js/foundation.js?v=check" | head -c 80   # fresh bundle
    ```
+
+   Use a cache-busting query when checking static files: the CDN caches
+   pb_public for up to 4 hours, so the bare URL may serve the previous
+   deploy (users may see it that long too; API routes and hooks are not
+   cached).
 
    Plus migration effects: a new collection responds at
    `/api/collections/<name>/records` instead of 404, and a field added to
