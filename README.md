@@ -42,9 +42,9 @@ npm run new-app foo
 ## Launch your own
 
 Bootstrap your deployment repo with
-[skills/cubby-init/SKILL.md](skills/cubby-init/SKILL.md), provision a
+[skills/init/SKILL.md](skills/init/SKILL.md), provision a
 PocketHost instance, edit `cubby.config.json`, and follow
-[skills/cubby-deploy/SKILL.md](skills/cubby-deploy/SKILL.md). The same skills
+[skills/deploy/SKILL.md](skills/deploy/SKILL.md). The same skills
 power AI-assisted workflows: this repo is a Claude Code plugin marketplace
 (`/plugin marketplace add patsissons/cubby`), and the bundled GitHub Action
 can turn "new app" issues into PRs.
@@ -59,7 +59,7 @@ pb_public/index.html    discovery site
 pb_hooks/               AI proxy + rooms sweeper (PocketBase JSVM)
 pb_migrations/          platform + app collections
 scripts/                dev server, scaffolder, manifest, smoke test
-skills/                 agent skills (new-app, deploy)
+skills/                 agent skills (init, deploy, new-app, update)
 docs/                   architecture, new-app, forking, decisions
 ```
 

@@ -1,5 +1,6 @@
 ---
-name: cubby-new-app
+name: new-app
+argument-hint: "<name>: <description>"
 description: Create a micro-site (app) in an existing cubby deployment. Use when asked to add, build, or scaffold a new app, page, tool, game, or site in a cubby repo, or to modify an existing cubby app. Covers app anatomy, the full cubby foundation API (db, fs, identity, ai, rooms), collections/migrations, naming rules, and the required PR shape.
 ---
 

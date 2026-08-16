@@ -1,5 +1,5 @@
 ---
-name: cubby-deploy
+name: deploy
 description: Launch or operate your own cubby system on PocketHost. Use when setting up a new cubby deployment, configuring OAuth providers or AI keys, wiring deploy credentials and GitHub secrets, adding a custom domain, or troubleshooting deploys of a cubby repo.
 ---
 
@@ -12,8 +12,8 @@ path; the repo mechanics are in docs/forking.md.
 
 ## 1. Repos and instance
 
-1. Create your deployment repo: the cubby-init skill
-   (skills/cubby-init/SKILL.md) creates it, clones the platform repo with
+1. Create your deployment repo: the init skill
+   (skills/init/SKILL.md) creates it, clones the platform repo with
    shared history, wires upstream/origin remotes, and pushes. (GitHub's
    "Use this template" button also works but yields unrelated history; see
    that skill for the tradeoff.)

@@ -1,5 +1,6 @@
 ---
-name: cubby-update
+name: update
+argument-hint: "[--upstream owner/repo]"
 description: Pull the latest cubby platform updates from upstream into a deployment repo and roll them out to the deployed instance. Use when asked to update or upgrade a cubby deployment, adopt foundation/platform changes from upstream, sync a deployment with the template repo, or when upstream has features or fixes a deployed app needs.
 ---
 
@@ -41,7 +42,7 @@ against the deployment's own config, and ships them to the instance.
 
    Repo created with GitHub's template button instead of a shared-history
    clone? The first merge (only) needs `--allow-unrelated-histories`; see
-   the cubby-init skill.
+   the init skill.
 
 3. **Resolve conflicts by ownership.** Conflicts should be rare and almost
    always mean one of these three cases:

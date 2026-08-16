@@ -1,13 +1,14 @@
 ---
-name: cubby-init
-description: Bootstrap a new cubby deployment repo. Creates the GitHub repo if it does not exist, clones the cubby template with shared git history, wires upstream and origin remotes, and pushes. Use when starting a brand new cubby deployment or system, before any instance setup; hand off to cubby-deploy afterward.
+name: init
+argument-hint: <owner/name> [--public] [--upstream owner/repo]
+description: Bootstrap a new cubby deployment repo. Creates the GitHub repo if it does not exist, clones the cubby template with shared git history, wires upstream and origin remotes, and pushes. Use when starting a brand new cubby deployment or system, before any instance setup; hand off to the deploy skill afterward.
 ---
 
 # Initializing a cubby deployment repo
 
 This skill takes someone from "I want my own cubby" to a pushed deployment
 repo with correct remotes. It creates and wires repos only; instance setup
-(PocketHost, config, OAuth, keys) is the cubby-deploy skill, which this
+(PocketHost, config, OAuth, keys) is the deploy skill, which this
 hands off to.
 
 ## Gather these first
@@ -130,8 +131,8 @@ forkability rule forbids anyway.
 
 ## Hand off
 
-The repo is ready. Continue with the cubby-deploy skill
-(skills/cubby-deploy/SKILL.md): edit cubby.config.json, link the PocketHost
+The repo is ready. Continue with the deploy skill
+(skills/deploy/SKILL.md): edit cubby.config.json, link the PocketHost
 instance, first deploy, OAuth, keys, and CI secrets. Later platform updates:
 
 ```

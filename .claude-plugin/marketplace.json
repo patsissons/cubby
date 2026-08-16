@@ -9,7 +9,7 @@
     {
       "name": "cubby",
       "source": "./",
-      "description": "Skills and commands for building cubby micro-apps and deploying cubby systems.",
+      "description": "Skills for building cubby micro-apps and for initializing, deploying, and updating cubby systems.",
       "license": "MIT"
     }
   ]

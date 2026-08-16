@@ -2,7 +2,7 @@
 #
 # Two modes:
 #  1. Automation: labeling an issue `new-app` makes Claude build the app as a
-#     PR using the cubby-new-app skill.
+#     PR using the new-app skill.
 #  2. Interactive: mentioning @claude in issue/PR comments (review feedback
 #     like "make the buttons bigger") continues work on the same branch.
 #
@@ -58,5 +58,5 @@ jobs:
           trigger_phrase: "@claude"
           # Automation mode (explicit prompt) only for labeled issues;
           # comments run interactive mode.
-          prompt: ${{ github.event_name == 'issues' && 'Implement the app described in this issue using the cubby-new-app skill (skills/cubby-new-app/SKILL.md) and open a pull request. The PR may only touch the new app directory under pb_public/, optional pb_migrations/*_app_<name>_* migrations, and the regenerated sites.json. Run npm ci and npm run build before committing so artifacts are fresh.' || '' }}
+          prompt: ${{ github.event_name == 'issues' && 'Implement the app described in this issue using the new-app skill (skills/new-app/SKILL.md) and open a pull request. The PR may only touch the new app directory under pb_public/, optional pb_migrations/*_app_<name>_* migrations, and the regenerated sites.json. Run npm ci and npm run build before committing so artifacts are fresh.' || '' }}
           claude_args: "--max-turns 40"

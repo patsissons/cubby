@@ -26,13 +26,13 @@ an upstream bug: fix it in cubby and merge it down.
 1. Create your deployment repo (private is fine; naming it after your
    domain or instance works well). Prefer a shared-history clone over
    GitHub's "Use this template" button so `git merge upstream/main` works
-   without `--allow-unrelated-histories`; the cubby-init skill
-   (skills/cubby-init/SKILL.md, also `/cubby:init`) automates the whole
+   without `--allow-unrelated-histories`; the init skill
+   (skills/init/SKILL.md, also `/cubby:init`) automates the whole
    thing: create if missing, clone, wire remotes, push.
 2. Create a PocketHost instance (pockethost.io).
 3. Edit `cubby.config.json`: name, title, instanceUrl (and domain if you
    have one; otherwise leave it equal to instanceUrl).
-4. Follow the cubby-deploy skill (`skills/cubby-deploy/SKILL.md`) for
+4. Follow the deploy skill (`skills/deploy/SKILL.md`) for
    OAuth consoles, AI keys, deploy secrets, and first-deploy verification.
 
 ## Tracking upstream
@@ -47,7 +47,7 @@ npm run build               # rebuild artifacts after merges
 Because downstream repos only add files (apps, app migrations) and edit
 `cubby.config.json`, merges are usually clean. If a merge conflicts anywhere
 else, treat it as a signal that deployment state leaked into a platform file.
-The cubby-update skill (skills/cubby-update/SKILL.md, also `/cubby:update`)
+The update skill (skills/update/SKILL.md, also `/cubby:update`)
 automates the full flow: preview, merge, conflict ownership rules, rebuild,
 ship, and live verification.
 
