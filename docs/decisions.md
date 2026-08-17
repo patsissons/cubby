@@ -142,6 +142,16 @@ trust model working as intended. Client-side "instantiation options" were
 rejected: any browser can craft raw requests, so advisory JS settings
 would protect nothing.
 
+## phio deploys are additive: deletions do not propagate
+
+Verified live: deleting a directory locally made phio print "removing
+folder" on deploy, but the remote file was still there over SFTP (and
+still served). Treat phio deploys as add/replace only. When removing an
+app (or any file) from a deployment, delete the remote copy manually over
+SFTP (ftp.pockethost.io:2222, account email + registered SSH key, paths
+under `<instance>/`). Missing static paths fall back to the discovery
+site with HTTP 200, so verify deletions by content, not status code.
+
 ## Local dev binary pinned to PocketHost's line
 
 scripts/dev.mjs pins PocketBase 0.39.x (PB_VERSION env to override) to match

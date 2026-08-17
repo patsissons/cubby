@@ -120,6 +120,11 @@ deploy.yml: idea on your phone to live app with no laptop involved.
   (or the instance was not restarted after adding it).
 - OAuth popup errors: redirect URI mismatch; it must be exactly
   `https://<HOST>/api/oauth2-redirect` for the origin being used.
+- Deleted files still live after deploy: phio deploys are additive
+  (verified: its "removing folder" output does not actually delete). Remove
+  remote files manually over SFTP (`ftp.pockethost.io:2222`, account email,
+  registered SSH key, path `<instance>/...`), and verify by content since
+  missing static paths fall back to the discovery site with HTTP 200.
 - Stale `sites.json` after deploy: PocketHost's CDN caches pb_public
-  briefly.
+  briefly (up to 4 hours; use a `?v=x` query to check origin).
 - Rate limits: 1000 req/hr/IP. Every joined room tab heartbeats ~180/hr.
