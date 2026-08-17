@@ -15,5 +15,16 @@
       "gpt": { "provider": "openai", "id": "gpt-5.6-sol" }
     }
   },
-  "reservedNames": ["api", "_", "js", "_template", "index.html", "sites.json", "cubby.config.json"]
+  "reservedNames": [
+    "api",
+    "_",
+    "js",
+    "_template",
+    "index.html",
+    "sites.json",
+    "cubby.config.json",
+    "icon.svg",
+    "og.png",
+    "apple-touch-icon.png"
+  ]
 }

@@ -54,5 +54,33 @@ sites.sort((a, b) => a.title.localeCompare(b.title))
 writeFileSync(path.join(publicDir, 'sites.json'), JSON.stringify(sites, null, 2) + '\n')
 copyFileSync(path.join(root, 'cubby.config.json'), path.join(publicDir, 'cubby.config.json'))
 
+// OpenGraph tags need absolute URLs, so rewrite their origin from the
+// deployment's domain. This is what keeps og:url/og:image correct in forks
+// without anyone hand-editing platform files: the build they already run
+// does it.
+const config = JSON.parse(readFileSync(path.join(root, 'cubby.config.json'), 'utf8'))
+const origin = String(config.domain || config.instanceUrl || '').replace(/\/+$/, '')
+if (origin) {
+  const pages = [path.join(publicDir, 'index.html')]
+  for (const entry of readdirSync(publicDir, { withFileTypes: true })) {
+    if (entry.isDirectory() && existsSync(path.join(publicDir, entry.name, 'index.html'))) {
+      pages.push(path.join(publicDir, entry.name, 'index.html'))
+    }
+  }
+  let rewritten = 0
+  for (const page of pages) {
+    const html = readFileSync(page, 'utf8')
+    const updated = html.replace(
+      /(property="og:(?:url|image)"\s+content=")https?:\/\/[^/"]+/g,
+      `$1${origin}`
+    )
+    if (updated !== html) {
+      writeFileSync(page, updated)
+      rewritten++
+    }
+  }
+  if (rewritten) console.log(`rewrote og origins to ${origin} in ${rewritten} page(s)`)
+}
+
 console.log(`sites.json: ${sites.length} app(s): ${sites.map((s) => s.name).join(', ') || '(none)'}`)
 console.log('copied cubby.config.json into pb_public/')

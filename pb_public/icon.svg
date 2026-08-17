@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- cubby mark: a shelf of four cubbies, one occupied -->
+  <rect x="0" y="0" width="64" height="64" rx="14" fill="#201c17"/>
+  <rect x="9" y="9" width="21.5" height="21.5" rx="5" fill="#3a332b"/>
+  <rect x="33.5" y="9" width="21.5" height="21.5" rx="5" fill="#e8823f"/>
+  <rect x="9" y="33.5" width="21.5" height="21.5" rx="5" fill="#3a332b"/>
+  <rect x="33.5" y="33.5" width="21.5" height="21.5" rx="5" fill="#3a332b"/>
+</svg>

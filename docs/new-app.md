@@ -22,11 +22,16 @@ The short version: `npm run new-app <name>`, edit, `npm run dev`, ship.
    Default rules: read everyone (`listRule/viewRule: ""`), write
    authenticated (`"@request.auth.id != ''"`). See
    `pb_migrations/*_app_hello_guestbook.js` for the shape.
-5. **Manifest**: `cubby.json` needs name, title, description, icon;
+5. **Sharing (optional)**: add OpenGraph tags to your index.html (copy the
+   block from `pb_public/hello/index.html`). The shared platform assets
+   `/icon.svg`, `/og.png`, and `/apple-touch-icon.png` are there to use,
+   and the manifest build rewrites `og:url`/`og:image` origins to the
+   deployment's domain automatically.
+6. **Manifest**: `cubby.json` needs name, title, description, icon;
    category and tags are optional but power the discovery site's search
    and chips. Then `npm run build:manifest` regenerates `sites.json`
    (new-app already does; it stamps each app's `added` date once).
-6. **Verify**: `npm run dev`, open `http://localhost:8090/my-app/`, exercise
+7. **Verify**: `npm run dev`, open `http://localhost:8090/my-app/`, exercise
    the app, check the discovery site lists it.
 
 ## What not to touch
