@@ -67,19 +67,19 @@ if (origin) {
       pages.push(path.join(publicDir, entry.name, 'index.html'))
     }
   }
+  const siteName = String(config.title || config.name || 'Cubby')
   let rewritten = 0
   for (const page of pages) {
     const html = readFileSync(page, 'utf8')
-    const updated = html.replace(
-      /(property="og:(?:url|image)"\s+content=")https?:\/\/[^/"]+/g,
-      `$1${origin}`
-    )
+    const updated = html
+      .replace(/(property="og:(?:url|image)"\s+content=")https?:\/\/[^/"]+/g, `$1${origin}`)
+      .replace(/(property="og:site_name"\s+content=")[^"]*/g, `$1${siteName}`)
     if (updated !== html) {
       writeFileSync(page, updated)
       rewritten++
     }
   }
-  if (rewritten) console.log(`rewrote og origins to ${origin} in ${rewritten} page(s)`)
+  if (rewritten) console.log(`rewrote og origins/site_name for ${rewritten} page(s)`)
 }
 
 console.log(`sites.json: ${sites.length} app(s): ${sites.map((s) => s.name).join(', ') || '(none)'}`)
