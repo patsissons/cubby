@@ -109,13 +109,13 @@ deploy.yml: idea on your phone to live app with no laptop involved.
 
 ## Troubleshooting
 
-- Hooks 404 or collections missing after a deploy: power-cycle the instance
-  from the PocketHost dashboard's power button and confirm it actually goes
-  down before powering on. Updating the instance's power field via the
-  mothership API does NOT stop a running container, and PocketBase's
-  documented pb_hooks auto-restart does not fire for SFTP-written files;
-  note that an open browser tab holds a realtime connection that keeps the
-  instance alive.
+- Hooks 404 or collections missing after a deploy: the running process
+  predates the upload. Either power-cycle from the PocketHost dashboard's
+  power button (confirm it actually goes down first), or close every open
+  tab of the site (realtime SSE connections keep it awake) and let the
+  instance hibernate; the next request boots the new code. The mothership
+  API's power field does NOT stop a running container, and the documented
+  pb_hooks auto-restart does not fire for SFTP-written files.
 - `provider_unconfigured`: the named env var is missing in instance Secrets
   (or the instance was not restarted after adding it).
 - OAuth popup errors: redirect URI mismatch; it must be exactly

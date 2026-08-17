@@ -74,10 +74,13 @@ documented pb_hooks auto-restart (SFTP writes appear not to fire the
 watcher across PocketHost's mounts). Worse, "power cycling" through the
 mothership API (PUT instance {power:false/true}) returns 200 but does not
 stop a running container: the instance served requests and ran crons
-straight through a one-minute "off" window. The only reliable lever is the
-dashboard's power button, and an open browser tab's realtime (SSE)
-connection can keep the instance alive, so close tabs or expect to wait.
-Static pb_public changes need no restart (but see the CDN cache note).
+straight through a one-minute "off" window. Two levers actually work: the
+dashboard's power button, or closing every live connection (an open tab's
+realtime SSE keeps the instance awake) and letting it hibernate; the next
+request boots the new code. Verified: after closing the last tab, the
+instance recycled within minutes and loaded the pending hook and
+migration. Static pb_public changes need no restart (but see the CDN
+cache note).
 
 ## Superuser impersonation powers local testing
 
