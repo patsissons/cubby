@@ -33,9 +33,31 @@ const state = {
   baseUrl: detectBaseUrl(),
   /** @type {Awaited<ReturnType<typeof loadConfig>> | null} */
   config: null,
+  /** @internal cleanup hooks run by identity.logout() while the token is still valid */
+  hooks: { beforeLogout: new Set() },
 }
 
 const pb = new PocketBase(state.baseUrl || undefined)
+
+// The realtime SSE connection is bound to the auth it connected with and the
+// PB SDK never rebinds it, so any subscription submitted after an identity
+// change is rejected ("authorization don't match"). Cycle the connection on
+// auth changes: reconnecting resubmits every live topic under the current
+// identity. disconnect/connect are stable-but-undocumented SDK internals;
+// the SDK version is pinned by the committed bundle.
+pb.authStore.onChange(() => {
+  const realtime = pb.realtime
+  if (!realtime || !Object.keys(realtime.subscriptions || {}).length) return
+  try {
+    realtime.disconnect()
+    const reconnect = realtime.connect()
+    if (reconnect && typeof reconnect.catch === 'function') {
+      reconnect.catch((err) => console.warn('[cubby] realtime reconnect failed:', err))
+    }
+  } catch (err) {
+    console.warn('[cubby] realtime auth cycle failed:', err)
+  }
+})
 
 /**
  * Apply overrides before ready resolves; used by local dev and tests.
@@ -65,6 +87,21 @@ async function boot() {
   state.config = config
   if (!state.baseUrl && config.instanceUrl) {
     configure({ instanceUrl: config.instanceUrl })
+  }
+
+  // Anonymous visit beacon for the discovery site's usage sorting.
+  // Fire-and-forget, browser only, no user data attached.
+  if (typeof document !== 'undefined' && state.app !== '_root') {
+    try {
+      fetch(`${state.baseUrl || ''}/_cubby/stats/visit`, {
+        method: 'POST',
+        keepalive: true,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app: state.app }),
+      }).catch(() => {})
+    } catch {
+      // stats are best-effort
+    }
   }
 
   // Validate any restored auth token; clear it when stale so identity state is trustworthy.

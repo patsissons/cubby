@@ -1,0 +1,12 @@
+{
+  "name": "docs",
+  "title": "Docs",
+  "description": "Learn cubby on a single page: the platform, every API, and how to run your own.",
+  "icon": "📚",
+  "category": "reference",
+  "tags": [
+    "documentation",
+    "guide",
+    "learning"
+  ]
+}

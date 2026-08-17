@@ -1,8 +1,30 @@
 [
   {
+    "name": "docs",
+    "title": "Docs",
+    "description": "Learn cubby on a single page: the platform, every API, and how to run your own.",
+    "icon": "📚",
+    "category": "reference",
+    "tags": [
+      "documentation",
+      "guide",
+      "learning"
+    ],
+    "added": "2026-08-17"
+  },
+  {
     "name": "hello",
     "title": "Hello",
     "description": "The example app: every cubby subsystem on one page.",
-    "icon": "👋"
+    "icon": "👋",
+    "category": "examples",
+    "tags": [
+      "demo",
+      "reference",
+      "guestbook",
+      "rooms",
+      "ai"
+    ],
+    "added": "2026-08-17"
   }
 ]

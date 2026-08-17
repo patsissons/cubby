@@ -2,5 +2,13 @@
   "name": "hello",
   "title": "Hello",
   "description": "The example app: every cubby subsystem on one page.",
-  "icon": "👋"
+  "icon": "👋",
+  "category": "examples",
+  "tags": [
+    "demo",
+    "reference",
+    "guestbook",
+    "rooms",
+    "ai"
+  ]
 }

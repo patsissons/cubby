@@ -31,8 +31,15 @@ pb_public/<name>/
 ├── index.html    loads /js/foundation.js + app.js (both defer)
 ├── app.js        the app; await cubby.ready before using cubby.*
 ├── style.css     dark-mode aware (see template's prefers-color-scheme vars)
-└── cubby.json    manifest: { name, title, description, icon, hidden? }
+└── cubby.json    manifest: { name, title, description, icon, hidden?,
+                              category?, tags? }
 ```
+
+The discovery site's search box matches name, title, description, category,
+and tags, so fill category (one word) and a few tags; the scaffolder
+accepts `--category` and `--tags "a,b,c"`. Visits are counted automatically
+(the foundation pings an anonymous per-app counter on boot) and power the
+dashboard's "most visited" and "recently used" sorting; apps do nothing.
 
 ## HASH ROUTING IS MANDATORY
 

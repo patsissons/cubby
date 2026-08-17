@@ -37,8 +37,19 @@ export function createIdentity(state, pb) {
       }
       return current()
     },
-    /** Sign out everywhere on this origin. */
+    /**
+     * Sign out everywhere on this origin. Subsystem cleanup hooks (e.g.
+     * rooms departing presence) run first, while the token is still valid.
+     */
     async logout() {
+      const hooks = state.hooks?.beforeLogout ? [...state.hooks.beforeLogout] : []
+      for (const hook of hooks) {
+        try {
+          await hook()
+        } catch (err) {
+          console.warn('[cubby] beforeLogout cleanup failed:', err)
+        }
+      }
       pb.authStore.clear()
     },
     /** The signed-in user record, or null. */

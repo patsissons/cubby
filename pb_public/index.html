@@ -89,6 +89,64 @@
         padding-bottom: 4rem;
       }
 
+      .toolbar {
+        display: flex;
+        gap: 0.6rem;
+        margin-bottom: 1.1rem;
+      }
+
+      .toolbar input,
+      .toolbar select {
+        font: inherit;
+        color: var(--fg);
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 0.5rem 0.8rem;
+      }
+
+      .toolbar input {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .toolbar input:focus-visible,
+      .toolbar select:focus-visible {
+        outline: none;
+        border-color: var(--accent);
+      }
+
+      .no-match {
+        color: var(--muted);
+        text-align: center;
+        padding: 2.5rem 0;
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.3rem;
+        margin-top: 0.15rem;
+      }
+
+      .chip {
+        font-size: 0.72rem;
+        color: var(--muted);
+        background: var(--accent-soft);
+        border-radius: 999px;
+        padding: 0.05rem 0.55rem;
+      }
+
+      .chip.category {
+        color: var(--accent);
+        font-weight: 600;
+      }
+
+      .card .meta {
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+
       .grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
@@ -236,7 +294,22 @@
 
     <main>
       <div class="wrap">
+        <div class="toolbar" id="toolbar" hidden>
+          <input
+            id="search"
+            type="search"
+            placeholder="filter apps... (name, tag, category)"
+            aria-label="Filter apps"
+          />
+          <select id="sort" aria-label="Sort apps">
+            <option value="name">a to z</option>
+            <option value="newest">newest</option>
+            <option value="popular">most visited</option>
+            <option value="recent">recently used</option>
+          </select>
+        </div>
         <ul class="grid" id="grid"></ul>
+        <p class="no-match" id="no-match" hidden>nothing matches that filter</p>
       </div>
     </main>
 
@@ -245,7 +318,7 @@
         <span id="presence"><span class="dot"></span><span id="presence-label">warming up...</span></span>
         <span>
           built on <a href="https://github.com/patsissons/cubby">cubby</a> +
-          <a href="https://pocketbase.io">PocketBase</a>
+          <a href="https://pockethost.io">PocketHost</a>
         </span>
       </div>
     </footer>
@@ -253,32 +326,130 @@
     <script defer>
       window.addEventListener('DOMContentLoaded', async () => {
         const grid = document.getElementById('grid')
+        const toolbar = document.getElementById('toolbar')
+        const search = document.getElementById('search')
+        const sortSelect = document.getElementById('sort')
+        const noMatch = document.getElementById('no-match')
+
+        let sites = []
+        const usage = new Map()
+
+        function relativeTime(iso) {
+          if (!iso) return ''
+          const seconds = (Date.now() - new Date(iso.replace(' ', 'T')).getTime()) / 1000
+          if (seconds < 90) return 'just now'
+          if (seconds < 5400) return `${Math.round(seconds / 60)}m ago`
+          if (seconds < 129600) return `${Math.round(seconds / 3600)}h ago`
+          return `${Math.round(seconds / 86400)}d ago`
+        }
+
+        function matches(site, query) {
+          if (!query) return true
+          const haystack = [site.name, site.title, site.description, site.category, ...(site.tags || [])]
+            .join(' ')
+            .toLowerCase()
+          return query
+            .toLowerCase()
+            .split(/\s+/)
+            .every((term) => haystack.includes(term))
+        }
+
+        const sorters = {
+          name: (a, b) => a.title.localeCompare(b.title),
+          newest: (a, b) => (b.added || '').localeCompare(a.added || '') || a.title.localeCompare(b.title),
+          popular: (a, b) =>
+            (usage.get(b.name)?.visits || 0) - (usage.get(a.name)?.visits || 0) ||
+            a.title.localeCompare(b.title),
+          recent: (a, b) =>
+            (usage.get(b.name)?.lastVisit || '').localeCompare(usage.get(a.name)?.lastVisit || '') ||
+            a.title.localeCompare(b.title),
+        }
+
+        function metaFor(site) {
+          const stats = usage.get(site.name)
+          if (sortSelect.value === 'popular' && stats?.visits) {
+            return `${stats.visits} visit${stats.visits === 1 ? '' : 's'}`
+          }
+          if (sortSelect.value === 'recent' && stats?.lastVisit) {
+            return `used ${relativeTime(stats.lastVisit)}`
+          }
+          if (sortSelect.value === 'newest' && site.added) {
+            return `added ${site.added}`
+          }
+          return ''
+        }
+
+        function render() {
+          const query = search.value.trim()
+          const shown = sites.filter((s) => matches(s, query)).sort(sorters[sortSelect.value] || sorters.name)
+          grid.innerHTML = ''
+          noMatch.hidden = shown.length > 0
+          for (const site of shown) {
+            const li = document.createElement('li')
+            const a = document.createElement('a')
+            a.className = 'card'
+            a.href = `/${site.name}/`
+            const icon = document.createElement('span')
+            icon.className = 'icon'
+            icon.textContent = site.icon
+            const h2 = document.createElement('h2')
+            h2.textContent = site.title
+            const p = document.createElement('p')
+            p.textContent = site.description
+            a.append(icon, h2, p)
+            const meta = metaFor(site)
+            if (meta) {
+              const span = document.createElement('span')
+              span.className = 'meta'
+              span.textContent = meta
+              a.append(span)
+            }
+            if (site.category || site.tags?.length) {
+              const chips = document.createElement('span')
+              chips.className = 'chips'
+              if (site.category) {
+                const chip = document.createElement('span')
+                chip.className = 'chip category'
+                chip.textContent = site.category
+                chips.append(chip)
+              }
+              for (const tag of (site.tags || []).slice(0, 4)) {
+                const chip = document.createElement('span')
+                chip.className = 'chip'
+                chip.textContent = tag
+                chips.append(chip)
+              }
+              a.append(chips)
+            }
+            const go = document.createElement('span')
+            go.className = 'go'
+            go.textContent = 'open'
+            a.append(go)
+            li.append(a)
+            grid.append(li)
+          }
+        }
 
         try {
-          const sites = await fetch('/sites.json').then((r) => r.json())
+          sites = await fetch('/sites.json').then((r) => r.json())
           if (!sites.length) {
             grid.outerHTML =
               '<div class="empty"><p>Nothing on the shelf yet.</p><p>Run <code>npm run new-app &lt;name&gt;</code> to add the first app.</p></div>'
           } else {
-            for (const site of sites) {
-              const li = document.createElement('li')
-              const a = document.createElement('a')
-              a.className = 'card'
-              a.href = `/${site.name}/`
-              const icon = document.createElement('span')
-              icon.className = 'icon'
-              icon.textContent = site.icon
-              const h2 = document.createElement('h2')
-              h2.textContent = site.title
-              const p = document.createElement('p')
-              p.textContent = site.description
-              const go = document.createElement('span')
-              go.className = 'go'
-              go.textContent = 'open'
-              a.append(icon, h2, p, go)
-              li.append(a)
-              grid.append(li)
-            }
+            toolbar.hidden = false
+            search.addEventListener('input', render)
+            sortSelect.addEventListener('change', render)
+            render()
+            // Usage stats are optional flavor; merge them in when they load.
+            fetch('/api/collections/app_usage/records?perPage=200')
+              .then((r) => r.json())
+              .then((page) => {
+                for (const row of page.items || []) {
+                  usage.set(row.app, { visits: row.visits, lastVisit: row.lastVisit })
+                }
+                render()
+              })
+              .catch(() => {})
           }
         } catch (err) {
           console.error('sites.json failed', err)

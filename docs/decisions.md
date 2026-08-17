@@ -91,6 +91,35 @@ template point at their own instances (and domains) via cubby.config.json;
 nothing in the platform references the demo instance except the config file
 and README links.
 
+## Realtime auth rebinding is the foundation's job
+
+The PB JS SDK never rebinds its SSE connection when the auth store changes;
+any subscription submitted afterward is rejected with "authorization don't
+match" as long as some other subscription keeps the connection alive. The
+foundation cycles the realtime connection on identity changes
+(realtime.disconnect() + connect(), stable-but-undocumented SDK internals;
+the SDK version is pinned by the committed bundle), which resubmits every
+topic under the current identity. Relatedly, identity.logout() runs
+registered beforeLogout hooks before clearing the token so subsystems can
+clean up while still authorized: rooms uses this to delete its presence row,
+giving other clients an instant user.leave instead of a 60s sweeper wait.
+
+## App metadata lives in cubby.json, not a second file
+
+When richer app metadata was wanted (tags, category) the options were a new
+metadata.json or extending the existing manifest. cubby.json IS the app
+manifest, so it grew the fields; the manifest build flows them into
+sites.json and also stamps a stable `added` date by carrying forward values
+from the committed sites.json (new apps get stamped once).
+
+## Usage counters are hook-mediated
+
+Popularity/recency sorting needs anonymous per-app counters. Letting
+clients write a counters collection invites forgery and racy increments, so
+app_usage is writable only by the /_cubby/stats/visit hook (system
+context), which validates the app against sites.json. The foundation fires
+the visit beacon on app boot: anonymous by design, no user linkage.
+
 ## Local dev binary pinned to PocketHost's line
 
 scripts/dev.mjs pins PocketBase 0.39.x (PB_VERSION env to override) to match

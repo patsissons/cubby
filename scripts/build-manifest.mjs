@@ -8,6 +8,19 @@ import path from 'node:path'
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const publicDir = path.join(root, 'pb_public')
 
+// Carry forward first-seen dates from the committed manifest so `added`
+// stays stable across rebuilds (new apps get stamped once).
+let previous = {}
+try {
+  for (const site of JSON.parse(readFileSync(path.join(publicDir, 'sites.json'), 'utf8'))) {
+    previous[site.name] = site
+  }
+} catch {
+  previous = {}
+}
+
+const today = new Date().toISOString().slice(0, 10)
+
 const sites = []
 for (const entry of readdirSync(publicDir, { withFileTypes: true })) {
   if (!entry.isDirectory()) continue
@@ -30,6 +43,9 @@ for (const entry of readdirSync(publicDir, { withFileTypes: true })) {
     title: manifest.title || entry.name,
     description: manifest.description || '',
     icon: manifest.icon || '🕳️',
+    category: manifest.category || '',
+    tags: Array.isArray(manifest.tags) ? manifest.tags.map(String) : [],
+    added: previous[entry.name]?.added || today,
   })
 }
 

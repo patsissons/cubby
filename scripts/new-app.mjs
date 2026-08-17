@@ -46,6 +46,11 @@ const manifest = {
   title,
   description: flag('description') || `The ${title} app.`,
   icon: flag('icon') || '🕳️',
+  category: flag('category') || '',
+  tags: (flag('tags') || '')
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean),
 }
 writeFileSync(path.join(target, 'cubby.json'), JSON.stringify(manifest, null, 2) + '\n')
 

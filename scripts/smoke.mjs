@@ -278,10 +278,16 @@ await test('rooms: emit rejects reserved and unauthenticated use', async () => {
   await assert.rejects(() => roomA.emit('room.fake', {}), (e) => e.code === 'bad_request')
 })
 
-await test('rooms: names resolve after signing in mid-watch', async () => {
+await test('rooms: names and realtime resolve after signing in mid-watch', async () => {
   const { default: cubby3 } = await import('../pb_public/js/foundation.esm.js?window3')
   cubby3.configure({ app: 'hello', instanceUrl: BASE })
   await cubby3.ready
+
+  // An unrelated subscription keeps the SSE connection alive across the
+  // auth change; PB rejects mismatched-auth submits on a live connection,
+  // so this reproduces the browser condition (guestbook + rooms on one
+  // connection) that a fresh-connection test would miss.
+  await cubby3.db.collection('guestbook').subscribe('*', () => {})
 
   const occupied = cubby.rooms.room('smoke-lobby2')
   await occupied.join()
@@ -292,7 +298,7 @@ await test('rooms: names resolve after signing in mid-watch', async () => {
   assert.ok(anonEntry, 'anonymous watcher sees presence')
   assert.ok(!anonEntry.user.name, 'anonymous watcher cannot resolve names (auth-gated)')
 
-  // Signing in must rebuild the subscription and roster with the new auth.
+  // Signing in must rebind the realtime connection and rebuild the roster.
   cubby3._pb.authStore.save(impersonated2.token, impersonated2.record)
   const deadline = Date.now() + 5000
   let named
@@ -303,9 +309,49 @@ await test('rooms: names resolve after signing in mid-watch', async () => {
   }
   assert.equal(named?.user?.name, 'Smoke Tester', 'names resolve after mid-watch sign-in')
 
+  // The rebound subscription must actually deliver events, not just the
+  // one-time roster refresh.
+  const stateSeen = within(5000, 'post-sign-in user.state')
+  watcher.on('user.state', (prev, next, user) => {
+    if (user.id === testUser.id && next.probe === 'rebind') stateSeen.resolve(next)
+  })
+  await occupied.updateUserState({ probe: 'rebind' })
+  await stateSeen.promise
+
+  await cubby3.db.collection('guestbook').unsubscribe('*')
   await watcher.leave()
   await occupied.leave()
   cubby3._pb.authStore.clear()
+})
+
+await test('rooms: identity.logout departs presence gracefully', async () => {
+  const { default: cubby4 } = await import('../pb_public/js/foundation.esm.js?window4')
+  cubby4.configure({ app: 'hello', instanceUrl: BASE })
+  await cubby4.ready
+  cubby4._pb.authStore.save(impersonated2.token, impersonated2.record)
+
+  const member = cubby4.rooms.room('smoke-lobby3')
+  await member.join()
+
+  const observer = cubby.rooms.room('smoke-lobby3')
+  const leaveSeen = within(5000, 'user.leave on logout')
+  observer.on('user.leave', (user) => {
+    if (user.id === testUser2.id) leaveSeen.resolve(user)
+  })
+  await observer.watch()
+
+  // logout must delete presence while the token is still valid: others get
+  // user.leave immediately and no orphan row waits for the sweeper.
+  await cubby4.identity.logout()
+  await leaveSeen.promise
+
+  const rows = await fetch(
+    `${BASE}/api/collections/rooms_presence/records?filter=${encodeURIComponent("room='hello/smoke-lobby3'")}`
+  ).then((r) => r.json())
+  assert.equal(rows.totalItems, 0, 'no orphan presence row after logout')
+  assert.equal(cubby4.identity.user, null)
+
+  await observer.leave()
 })
 
 await test('hooks: sweep endpoint responds', async () => {
@@ -313,6 +359,39 @@ await test('hooks: sweep endpoint responds', async () => {
   const json = await res.json()
   assert.equal(res.status, 200)
   assert.equal(json.ok, true)
+})
+
+await test('hooks: visit stats increment anonymously', async () => {
+  const visit = () =>
+    fetch(`${BASE}/_cubby/stats/visit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ app: 'hello' }),
+    })
+  const first = await visit()
+  assert.equal(first.status, 200)
+  await visit()
+
+  const rows = await fetch(
+    `${BASE}/api/collections/app_usage/records?filter=${encodeURIComponent("app='hello'")}`
+  ).then((r) => r.json())
+  assert.equal(rows.totalItems, 1, 'one counter row per app')
+  assert.ok(rows.items[0].visits >= 2)
+  assert.ok(rows.items[0].lastVisit)
+
+  const unknown = await fetch(`${BASE}/_cubby/stats/visit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ app: 'not-a-real-app' }),
+  })
+  assert.equal(unknown.status, 404, 'unknown apps get no rows')
+
+  const invalid = await fetch(`${BASE}/_cubby/stats/visit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ app: 'Bad Name!' }),
+  })
+  assert.equal(invalid.status, 400)
 })
 
 await test('ai: anonymous requests rejected', async () => {

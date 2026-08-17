@@ -48,6 +48,20 @@ export function createRooms(state, pb) {
     let unsubPresence = null
     let unsubEvents = null
     let authUnsub = null
+    let logoutHook = null
+
+    // Every state-changing operation runs through one queue so identity
+    // changes, joins, leaves, and heartbeats never interleave mid-flight
+    // (sign-in fires the app's join AND the auth resubscribe concurrently).
+    let queue = Promise.resolve()
+    function enqueue(fn) {
+      const next = queue.then(fn, fn)
+      queue = next.then(
+        () => undefined,
+        () => undefined
+      )
+      return next
+    }
 
     function fire(event, ...args) {
       const set = handlers.get(event)
@@ -107,7 +121,7 @@ export function createRooms(state, pb) {
         // with; rebuild them when identity changes so names resolve.
         if (!authUnsub) {
           authUnsub = pb.authStore.onChange(() => {
-            resubscribe().catch((err) => console.warn('[cubby.rooms] resubscribe failed:', err))
+            enqueue(resubscribe).catch((err) => console.warn('[cubby.rooms] resubscribe failed:', err))
           })
         }
       } catch (err) {
@@ -203,40 +217,54 @@ export function createRooms(state, pb) {
        * Observe the room without joining (no presence record). Works
        * logged-out: used by the discovery site presence count.
        */
-      async watch() {
-        await subscribe()
-        return api
+      watch() {
+        return enqueue(async () => {
+          await subscribe()
+          return api
+        })
       },
 
       /** Join the room: requires auth, creates presence, starts heartbeat. */
-      async join() {
-        if (!pb.authStore.isValid) {
-          throw new CubbyError('auth_required', 'sign in before joining a room')
-        }
-        await subscribe()
-        await upsertPresence({})
-        // Re-pull the roster under the joined identity so expands (names)
-        // resolve even when the subscription predates sign-in.
-        await refresh()
-        joined = true
-        stopHeartbeat()
-        heartbeatTimer = setInterval(() => {
-          upsertPresence({}).catch((err) => console.warn('[cubby.rooms] heartbeat failed:', err))
-        }, HEARTBEAT_MS)
-        if (typeof window !== 'undefined') {
-          window.addEventListener('pagehide', beaconLeave)
-        }
-        return api
+      join() {
+        return enqueue(async () => {
+          if (!pb.authStore.isValid) {
+            throw new CubbyError('auth_required', 'sign in before joining a room')
+          }
+          await subscribe()
+          await upsertPresence({})
+          // Re-pull the roster under the joined identity so expands (names)
+          // resolve even when the subscription predates sign-in.
+          await refresh()
+          joined = true
+          stopHeartbeat()
+          heartbeatTimer = setInterval(() => {
+            enqueue(() => upsertPresence({})).catch((err) =>
+              console.warn('[cubby.rooms] heartbeat failed:', err)
+            )
+          }, HEARTBEAT_MS)
+          if (typeof window !== 'undefined') {
+            window.addEventListener('pagehide', beaconLeave)
+          }
+          // Depart gracefully during identity.logout(), while the token can
+          // still delete the presence row (others get user.leave instantly).
+          if (!logoutHook && state.hooks?.beforeLogout) {
+            logoutHook = () => api.leave()
+            state.hooks.beforeLogout.add(logoutHook)
+          }
+          return api
+        })
       },
 
       /**
        * Merge a patch into this user's shared room state.
        * @param {object} patch
        */
-      async updateUserState(patch) {
-        if (!joined) throw new CubbyError('bad_request', 'join the room before updating state')
-        const mine = present.get(pb.authStore.record.id)?.state || {}
-        await upsertPresence({ state: { ...mine, ...patch } })
+      updateUserState(patch) {
+        return enqueue(async () => {
+          if (!joined) throw new CubbyError('bad_request', 'join the room before updating state')
+          const mine = present.get(pb.authStore.record.id)?.state || {}
+          await upsertPresence({ state: { ...mine, ...patch } })
+        })
       },
 
       /**
@@ -264,27 +292,34 @@ export function createRooms(state, pb) {
       },
 
       /** Leave: delete presence, stop heartbeat, unsubscribe. */
-      async leave() {
+      leave() {
         stopHeartbeat()
-        if (typeof window !== 'undefined') {
-          window.removeEventListener('pagehide', beaconLeave)
-        }
-        if (myRecordId) {
-          await presence()
-            .delete(myRecordId)
-            .catch(() => {})
-          myRecordId = null
-        }
-        joined = false
-        watching = false
-        if (unsubPresence) unsubPresence()
-        if (unsubEvents) unsubEvents()
-        unsubPresence = unsubEvents = null
-        if (authUnsub) {
-          authUnsub()
-          authUnsub = null
-        }
-        present.clear()
+        return enqueue(async () => {
+          stopHeartbeat()
+          if (typeof window !== 'undefined') {
+            window.removeEventListener('pagehide', beaconLeave)
+          }
+          if (myRecordId) {
+            await presence()
+              .delete(myRecordId)
+              .catch(() => {})
+            myRecordId = null
+          }
+          joined = false
+          watching = false
+          if (unsubPresence) unsubPresence()
+          if (unsubEvents) unsubEvents()
+          unsubPresence = unsubEvents = null
+          if (authUnsub) {
+            authUnsub()
+            authUnsub = null
+          }
+          if (logoutHook) {
+            state.hooks?.beforeLogout?.delete(logoutHook)
+            logoutHook = null
+          }
+          present.clear()
+        })
       },
     }
 

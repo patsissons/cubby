@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Docs - Cubby</title>
+    <meta name="description" content="Learn cubby on a single page: the platform, every API, and how to run your own." />
+    <link rel="stylesheet" href="style.css" />
+    <script src="/js/foundation.js" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div class="layout">
+      <nav id="toc" aria-label="Sections">
+        <a class="brand" href="/">🕳️ cubby</a>
+        <a href="#nutshell">In a nutshell</a>
+        <a href="#good-for">What it's good for</a>
+        <a href="#plugin">The Claude plugin</a>
+        <a href="#foundation">The foundation</a>
+        <a href="#identity" class="sub">identity</a>
+        <a href="#db" class="sub">db</a>
+        <a href="#fs" class="sub">fs</a>
+        <a href="#ai" class="sub">ai</a>
+        <a href="#rooms" class="sub">rooms</a>
+        <a href="#building">Building an app</a>
+        <a href="#running">Running your own</a>
+        <a href="#links">Links</a>
+      </nav>
+
+      <main>
+        <header>
+          <h1>📚 Cubby, on one page</h1>
+          <p class="tagline">
+            A shelf of tiny web apps, each in its own cubby. This page is everything you need to
+            understand the platform, use its APIs, and run your own. It is itself a cubby app.
+          </p>
+        </header>
+
+        <section id="nutshell">
+          <h2>In a nutshell</h2>
+          <p>
+            One GitHub repo deploys to one
+            <a href="https://pockethost.io">PocketHost</a> (PocketBase) instance and hosts many
+            tiny static web apps. Each app is a directory of plain html/js/css: no build step, no
+            framework, no server code of its own.
+          </p>
+          <div class="diagram" role="img" aria-label="Repo deploys to instance which serves apps">
+            <div class="box">repo<br /><small>pb_public/&lt;app&gt;/ + hooks + migrations</small></div>
+            <div class="arrow">deploys to</div>
+            <div class="box">instance<br /><small>&lt;name&gt;.pockethost.io</small></div>
+            <div class="arrow">serves</div>
+            <div class="box">/&lt;app&gt;/<br /><small>+ / discovery site</small></div>
+          </div>
+          <p>Every app loads one script and gets the whole platform:</p>
+          <pre><code>&lt;script src="/js/foundation.js" defer&gt;&lt;/script&gt;</code></pre>
+          <p>
+            That script exposes a global <code>cubby</code> object providing a database
+            (<a href="#db">db</a>), file storage (<a href="#fs">fs</a>), OAuth login
+            (<a href="#identity">identity</a>), AI chat (<a href="#ai">ai</a>), and multi-user
+            rooms (<a href="#rooms">rooms</a>), all backed by the shared PocketBase instance. The
+            root of every deployment is a discovery site listing its apps. Login state is shared
+            across all apps on the origin: sign in once, signed in everywhere.
+          </p>
+        </section>
+
+        <section id="good-for">
+          <h2>What it's good for</h2>
+          <p>
+            Weekend-sized ideas that deserve to stay alive: guestbooks, timers, trackers, polls,
+            little games, dashboards, gifts. Anything where "a static page plus a database plus
+            login" covers it, and where shipping in an afternoon beats architecture. New app cost
+            is one directory, so nothing stops you from having thirty of them.
+          </p>
+          <p>Honest constraints, by design:</p>
+          <ul>
+            <li>Rooms ride PocketBase realtime over SSE: expect 100-500ms latency. Chat, presence, and casual multiplayer are great; twitch gameplay is not.</li>
+            <li>AI chat is non-streaming (the server hook buffers whole responses).</li>
+            <li>Apps are static files; anything dynamic goes through the foundation APIs.</li>
+            <li>Write isolation between apps is convention, not enforcement: a single-operator platform.</li>
+          </ul>
+        </section>
+
+        <section id="plugin">
+          <h2>The Claude plugin</h2>
+          <p>
+            The repo is its own Claude Code plugin marketplace. The skills that power it are the
+            same documents an AI agent follows, so "ask Claude to do it" is a first-class path:
+          </p>
+          <pre><code>/plugin marketplace add patsissons/cubby
+/plugin install cubby@cubby</code></pre>
+          <table>
+            <tr><td><code>/cubby:init</code></td><td>bootstrap a deployment repo: create, clone with shared history, wire remotes, fill cubby.config.json, push</td></tr>
+            <tr><td><code>/cubby:deploy</code></td><td>stand up the instance: phio link, first deploy, OAuth, keys, CI secrets</td></tr>
+            <tr><td><code>/cubby:new-app</code></td><td>scaffold and build a new app in an existing deployment</td></tr>
+            <tr><td><code>/cubby:update</code></td><td>merge upstream platform updates into a deployment and roll them out</td></tr>
+          </table>
+          <p>
+            There is also an issue-to-app pipeline: label a GitHub issue <code>new-app</code> and
+            a bundled workflow has Claude build it as a pull request; merging deploys it. Idea on
+            your phone to live app, no laptop involved.
+          </p>
+        </section>
+
+        <section id="foundation">
+          <h2>The foundation</h2>
+          <p>
+            Load <code>/js/foundation.js</code> (or import <code>/js/foundation.esm.js</code>),
+            wait for <code>cubby.ready</code>, then use anything:
+          </p>
+          <pre><code>await cubby.ready
+
+cubby.app        // { name: 'myapp', base: '/myapp/' }
+cubby.config     // the deployment's cubby.config.json
+cubby.version    // foundation version</code></pre>
+          <p>
+            Every method throws <code>cubby.CubbyError</code> with a machine-readable
+            <code>.code</code>: <code>auth_required</code>, <code>not_found</code>,
+            <code>bad_path</code>, <code>bad_request</code>, <code>model_unknown</code>,
+            <code>provider_unconfigured</code>, <code>provider_error</code>.
+          </p>
+        </section>
+
+        <section id="identity">
+          <h3>cubby.identity</h3>
+          <p>
+            OAuth2 only (Google and GitHub out of the box); password auth is disabled
+            platform-wide. One users collection serves every app, and the session is shared
+            across the origin automatically.
+          </p>
+          <pre><code>cubby.identityChanged((user) => {
+  render(user)                        // fires immediately; returns unsubscribe
+})
+
+await cubby.identity.login('github')  // popup flow
+cubby.identity.user                   // user record | null
+await cubby.identity.logout()</code></pre>
+          <p>
+            Identity changes propagate live: the foundation rebinds realtime subscriptions and
+            lets subsystems clean up on logout. Apps only need
+            <code>identityChanged</code> to re-render.
+          </p>
+        </section>
+
+        <section id="db">
+          <h3>cubby.db</h3>
+          <p>
+            Collections are namespaced <code>&lt;app&gt;_&lt;name&gt;</code> by convention, and
+            what you get back is the full PocketBase SDK record service: queries, pagination,
+            expands, and realtime subscriptions all work as PocketBase documents them.
+          </p>
+          <pre><code>const items = cubby.db.collection('items')      // -> '&lt;app&gt;_items'
+
+await items.create({ title: 'hi' })
+const page = await items.getList(1, 20, { sort: '-created', expand: 'user' })
+await items.subscribe('*', (e) => { /* e.action, e.record */ })
+
+cubby.db.collection('hello/guestbook')          // cross-app read
+cubby.db.raw                                    // the PocketBase SDK client</code></pre>
+          <p>
+            App collections are created by real migrations committed with the app (default rules:
+            read everyone, write authenticated). See <a href="#building">Building an app</a>.
+          </p>
+        </section>
+
+        <section id="fs">
+          <h3>cubby.fs</h3>
+          <p>
+            File storage over a shared platform collection: one record per (app, path), 10MB per
+            file, public reads, authenticated writes, upsert semantics.
+          </p>
+          <pre><code>await cubby.fs.write('notes/note.txt', 'hello')       // string | Blob | File
+const text = await cubby.fs.read('notes/note.txt')
+const url  = await cubby.fs.url('image.png')          // direct URL for &lt;img src&gt;
+const list = await cubby.fs.list('notes/')            // [{ path, size, updated }]
+await cubby.fs.remove('notes/note.txt')
+
+await cubby.fs.read('data.json', { app: 'otherapp' }) // cross-app read</code></pre>
+          <p>
+            Files are shared per (app, path): for per-user data, put the user id in the path,
+            like <code>notes/${cubby.identity.user.id}.txt</code>.
+          </p>
+        </section>
+
+        <section id="ai">
+          <h3>cubby.ai</h3>
+          <p>
+            Chat through a server-side proxy; provider API keys live in instance secrets and
+            never reach the browser. Models are friendly aliases defined in
+            <code>cubby.config.json</code> (Anthropic, OpenAI, and Gemini supported), and
+            anonymous calls are rejected.
+          </p>
+          <pre><code>const res = await cubby.ai.chat({
+  messages: [
+    { role: 'system', content: 'answer briefly' },
+    { role: 'user', content: 'what rhymes with cubby?' },
+  ],
+  model: 'claude-haiku',            // optional alias; omit for the default
+  options: { maxTokens: 500 },
+})
+
+res.text                            // plus res.usage, res.model, res.provider</code></pre>
+          <p>
+            Handle <code>provider_unconfigured</code> gracefully: not every deployment sets every
+            provider's key. Unknown aliases throw <code>model_unknown</code> before any request.
+          </p>
+        </section>
+
+        <section id="rooms">
+          <h3>cubby.rooms</h3>
+          <p>
+            Presence, shared per-user state, and broadcast events for multi-user pages. Watching
+            works signed out; joining requires auth and heartbeats automatically. A server-side
+            sweeper cleans up after crashed tabs.
+          </p>
+          <pre><code>const room = cubby.rooms.room('lobby')    // namespaced '&lt;app&gt;/lobby'
+
+room.on('user.join',  (user) => {})
+room.on('user.leave', (user) => {})
+room.on('user.state', (prev, next, user) => {})
+room.on('room.sync',  () => {})           // roster rebuilt; re-render here
+room.on('wave',       (payload, user) => {})   // your own events
+
+await room.watch()                        // observe only; works signed out
+await room.join()
+room.users                                // [{ user, state }]
+await room.updateUserState({ score: 3 })
+await room.emit('wave', { emoji: '👋' })
+await room.leave()</code></pre>
+          <p>
+            Custom event names must not start with <code>user.</code> or <code>room.</code>.
+            User names resolve for signed-in viewers only (profiles are auth-gated): render
+            <code>user.name || 'someone'</code>. The presence pill in the corner of this page is
+            <code>cubby.rooms</code> live.
+          </p>
+        </section>
+
+        <section id="building">
+          <h2>Building an app</h2>
+          <p>An app is one directory served at <code>/&lt;name&gt;/</code>:</p>
+          <pre><code>pb_public/myapp/
+├── index.html      loads /js/foundation.js + app.js
+├── app.js          await cubby.ready, then build
+├── style.css
+└── cubby.json      { name, title, description, icon }   -> discovery site card</code></pre>
+          <p>Scaffold one (or ask Claude via <code>/cubby:new-app</code>):</p>
+          <pre><code>npm run new-app myapp -- --title "My App" --icon "🎯"
+npm run dev         # local PocketBase + watch build at localhost:8090</code></pre>
+          <p>Three rules keep everything working:</p>
+          <ul>
+            <li>
+              <strong>Hash routing.</strong> Unknown server paths fall back to the discovery
+              site, so internal navigation uses <code>#/page</code>, never real paths.
+            </li>
+            <li>
+              <strong>Own your prefix.</strong> Collections you create are
+              <code>myapp_*</code>, added via a migration file committed with the app; read
+              anything, write only yours.
+            </li>
+            <li>
+              <strong>Do not touch the platform.</strong> The foundation, hooks, platform
+              migrations, and other apps stay as upstream ships them. That is what keeps
+              platform updates a clean merge.
+            </li>
+          </ul>
+        </section>
+
+        <section id="running">
+          <h2>Running your own</h2>
+          <p>
+            The public repo is a GitHub template and the platform's home. Your deployment is a
+            separate repo created from it; apps live there, and platform improvements flow back
+            upstream. The five-step version:
+          </p>
+          <ol>
+            <li>Create an instance at <a href="https://pockethost.io">pockethost.io</a>.</li>
+            <li>Install the plugin (see <a href="#plugin">above</a>).</li>
+            <li>
+              <code>/cubby:init you/your-repo</code>: creates the repo, clones the platform with
+              shared history, fills <code>cubby.config.json</code> (name, domain, instance URL),
+              pushes.
+            </li>
+            <li>
+              <code>/cubby:deploy</code>: links the instance, first deploy, and walks you through
+              OAuth apps, AI keys, and secrets.
+            </li>
+            <li>
+              Add <code>PHIO_USERNAME</code>, <code>PHIO_PASSWORD</code>, and
+              <code>PHIO_INSTANCE_NAME</code> as repo secrets and every push to main deploys
+              automatically: the bundled workflow rebuilds, verifies, and syncs to PocketHost.
+            </li>
+          </ol>
+          <p>
+            From then on it is a loop: idea, <code>/cubby:new-app</code> (or a
+            <code>new-app</code> labeled issue from your phone), merge, live. Platform updates
+            arrive with <code>/cubby:update</code>, which merges upstream and redeploys; your
+            config and apps are never touched by it.
+          </p>
+        </section>
+
+        <section id="links">
+          <h2>Links</h2>
+          <ul>
+            <li><a href="https://github.com/patsissons/cubby">github.com/patsissons/cubby</a>: the platform (template this)</li>
+            <li><a href="/hello/">/hello/</a>: every API above, live on one page</li>
+            <li><a href="/">the discovery site</a>: what this instance hosts</li>
+            <li><a href="https://pocketbase.io/docs/">PocketBase docs</a>: the full record API behind cubby.db</li>
+            <li><a href="https://pockethost.io/docs">PocketHost docs</a>: hosting, secrets, domains</li>
+          </ul>
+        </section>
+
+        <footer>
+          <span id="live-badge">cubby</span>
+          <span id="presence-pill" hidden></span>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>

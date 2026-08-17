@@ -121,6 +121,11 @@ cubby.identity.user                   // user record | null
 await cubby.identity.logout()
 ```
 
+Identity changes propagate live: the foundation rebinds the shared realtime
+connection so existing subscriptions keep working under the new identity,
+and logout() lets subsystems clean up (rooms depart presence) before the
+token is cleared. Apps only need `identityChanged` to re-render.
+
 ### OAuth provider setup
 
 Register one redirect URI per provider:
@@ -204,6 +209,19 @@ older than 60s (emitting user.leave for crashed clients via the delete
 event) and events older than 10 minutes. On PocketHost, add a dashboard
 webhook hitting `GET /_cubby/cron/sweep` on `@minutely` since `cronAdd` is
 unreliable under hibernation (see decisions.md).
+
+## Usage stats and the discovery site
+
+`POST /_cubby/stats/visit` (pb_hooks/stats.pb.js) bumps an anonymous
+per-app counter in the `app_usage` collection: one row per app with visits
+and lastVisit, public read, hook-only writes (clients cannot forge values),
+unknown apps rejected against sites.json. The foundation fires the beacon
+automatically when an app boots in a browser; no user data is attached.
+
+The discovery site builds its cards from sites.json (title, description,
+icon, category, tags, and an `added` date stamped once per app by the
+manifest build), offers search across all of those fields, and sorts by
+name, newest, most visited, or recently used using the app_usage rows.
 
 ## Local development
 
