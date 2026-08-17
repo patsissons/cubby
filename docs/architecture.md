@@ -175,9 +175,17 @@ server-side from the app's committed `cubby.json`:
 
 ```json
 "ai": {
-  "models": ["gemini-flash"],   // allowlist of registry aliases; DEFAULT []
-  "allowAnonymous": false,      // default false: signed-in users only
-  "rateLimitSeconds": 60        // min seconds between prompts per caller; 0 disables
+  "models": ["gemini-flash"],       // allowlist of registry aliases; DEFAULT []
+  "allowAnonymous": false,          // default false: signed-in users only
+  "rateLimitSeconds": 60,           // min seconds between prompts per caller; 0 disables
+  "allowedUsers": ["*@corp.com"],   // email globs; default []: any signed-in user
+  "maxChars": 4000,                 // total input length cap (default 4000; 0 disables)
+  "maxMessages": 16,                // message count cap (default 16)
+  "maxTokens": 1000,                // clamp on options.maxTokens (default 1000)
+  "messagePatterns": {              // per-role content regexes (default: none)
+    "system": "^You greet people warmly in one short sentence\\.$",
+    "user": "^Say hello to .{1,80}!$"
+  }
 }
 ```
 
@@ -186,8 +194,16 @@ No `ai` block means no AI: the empty allowlist rejects every model with
 client IP for anonymous-enabled apps), stamped before the provider call so
 failures are not free retries; violations return `rate_limited` (429) with
 a `retryAfter` seconds field that `cubby.ai.chat` surfaces on the thrown
-CubbyError. The app name in the request is the caller's claim: a forged
-claim can only ever reach models some committed manifest already allows.
+CubbyError.
+
+`messagePatterns` turns an AI feature into a parameterized template: when
+declared, EVERY message's role must have an entry and its content must
+match, so the browser cannot inject arbitrary prompts (unlisted roles are
+rejected too; the hello app's greeting demo works this way). `allowedUsers`
+gates usage to matching signed-in emails (`user_not_allowed`), and the size
+caps return `content_too_long` (413). Checks run before the rate stamp; the
+app name in the request is the caller's claim, so a forged claim can only
+ever reach policy combinations some committed manifest already allows.
 
 Keys: set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` in the
 PocketHost dashboard (instance > Secrets), then power the instance off and on.

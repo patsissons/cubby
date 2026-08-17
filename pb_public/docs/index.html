@@ -204,7 +204,11 @@ res.text                            // plus res.usage, res.model, res.provider</
             <code>cubby.json</code> declares an <code>ai.models</code> allowlist (empty means
             blocked), calls are signed-in-only unless <code>allowAnonymous</code> is set, and each
             caller gets one prompt per <code>rateLimitSeconds</code> (default 60), enforced
-            server-side. Handle the error codes: <code>model_not_allowed</code>,
+            server-side. Optional hardening: <code>allowedUsers</code> email globs, input size
+            caps, and <code>messagePatterns</code> (per-role regexes that turn prompts into
+            fixed templates the browser cannot escape). Handle the error codes:
+            <code>model_not_allowed</code>, <code>user_not_allowed</code>,
+            <code>content_not_allowed</code>, <code>content_too_long</code>,
             <code>rate_limited</code> (with <code>err.retryAfter</code> seconds), and
             <code>provider_unconfigured</code>.
           </p>

@@ -142,6 +142,14 @@ trust model working as intended. Client-side "instantiation options" were
 rejected: any browser can craft raw requests, so advisory JS settings
 would protect nothing.
 
+Extended with content controls after the first key went live: allowedUsers
+email globs (ACL, user_not_allowed), input size caps (content_too_long),
+an options.maxTokens clamp, and messagePatterns, which are per-role regexes
+that turn an app's prompts into fixed templates. Patterns are exhaustive by
+design: once declared, a message whose role has no entry is rejected,
+otherwise attackers would smuggle content through an unconstrained role.
+The hello demo uses them so the browser can only vary the greeted name.
+
 ## phio deploys are additive: deletions do not propagate
 
 Verified live: deleting a directory locally made phio print "removing

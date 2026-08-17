@@ -61,6 +61,48 @@ routerAdd('POST', '/_cubby/ai/chat', (e) => {
     return e.json(401, { code: 'auth_required', message: 'sign in to use the AI proxy' })
   }
 
+  // Identity ACL: when the app lists allowedUsers, the caller must be
+  // signed in and their email must match one of the globs.
+  if (policy.allowedUsers.length) {
+    const { emailMatches } = require(`${__hooks}/lib/config.js`)
+    const email = e.auth ? e.auth.getString('email') : ''
+    if (!email || !policy.allowedUsers.some((glob) => emailMatches(email, glob))) {
+      return e.json(403, {
+        code: 'user_not_allowed',
+        message: `app "${appName}" restricts AI usage to specific users`,
+      })
+    }
+  }
+
+  // Content limits: size first, then per-role patterns. When patterns are
+  // declared, every message's role needs an entry; unlisted roles are
+  // rejected so nothing can be smuggled through an unconstrained role.
+  let totalChars = 0
+  for (const msg of messages) totalChars += msg.content.length
+  if (messages.length > policy.maxMessages || (policy.maxChars > 0 && totalChars > policy.maxChars)) {
+    return e.json(413, {
+      code: 'content_too_long',
+      message: `input exceeds the app's limits (max ${policy.maxMessages} messages, ${policy.maxChars} chars)`,
+    })
+  }
+  if (policy.messagePatterns) {
+    for (const msg of messages) {
+      const pattern = policy.messagePatterns[msg.role]
+      let ok = false
+      try {
+        ok = typeof pattern === 'string' && new RegExp(pattern).test(msg.content)
+      } catch (err) {
+        ok = false
+      }
+      if (!ok) {
+        return e.json(403, {
+          code: 'content_not_allowed',
+          message: `app "${appName}" does not permit this ${msg.role} message content`,
+        })
+      }
+    }
+  }
+
   // Rate limit per caller. Counting attempts (stamped before the provider
   // call) keeps failed calls from becoming a free retry loop.
   if (policy.rateLimitSeconds > 0) {
@@ -97,10 +139,16 @@ routerAdd('POST', '/_cubby/ai/chat', (e) => {
   }
 
   // Key validation and provider translation come after policy so missing
-  // keys cannot bypass the rate stamp.
+  // keys cannot bypass the rate stamp. options.maxTokens is a cost lever,
+  // so clamp it to the app's cap.
+  const options = body.options && typeof body.options === 'object' ? body.options : {}
+  options.maxTokens = Math.min(
+    typeof options.maxTokens === 'number' && options.maxTokens > 0 ? options.maxTokens : policy.maxTokens,
+    policy.maxTokens
+  )
   let request
   try {
-    request = buildRequest(model, messages, body.options || {})
+    request = buildRequest(model, messages, options)
   } catch (err) {
     return e.json(err.status || 500, { code: err.code || 'provider_error', message: err.message || String(err) })
   }

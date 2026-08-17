@@ -12,6 +12,12 @@
     "ai"
   ],
   "ai": {
-    "models": ["gemini-flash"]
+    "models": ["gemini-flash"],
+    "maxChars": 500,
+    "maxTokens": 300,
+    "messagePatterns": {
+      "system": "^You greet people warmly in one short sentence\\.$",
+      "user": "^Say hello to .{1,80}!$"
+    }
   }
 }
