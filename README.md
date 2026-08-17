@@ -20,8 +20,11 @@ through a single script tag.
 
 This repo doubles as the live demo: it deploys to
 [cubby.pockethost.io](https://cubby.pockethost.io), where the root is a
-discovery site listing its apps; try
-[/hello/](https://cubby.pockethost.io/hello/) for every subsystem on one page.
+discovery site listing its apps. **New here (human or agent)? Read
+[/docs/](https://cubby.pockethost.io/docs/) first**: the whole platform on
+one page, from what cubby is to every API with code blocks to running your
+own. Then try [/hello/](https://cubby.pockethost.io/hello/) for every
+subsystem live on one page.
 
 ## The two repos
 
@@ -83,6 +86,9 @@ docs/                   architecture, new-app, forking, decisions
 
 ## Docs
 
+- [/docs/](https://cubby.pockethost.io/docs/): the one-page guide, also
+  served by every deployment at `/docs/` (source in
+  [pb_public/docs/](pb_public/docs/))
 - [docs/architecture.md](docs/architecture.md): how everything works, full
   API examples
 - [docs/new-app.md](docs/new-app.md): the add-an-app checklist
