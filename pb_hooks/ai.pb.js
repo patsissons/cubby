@@ -105,39 +105,63 @@ routerAdd('POST', '/_cubby/ai/chat', (e) => {
     }
   }
 
-  // Rate limit per caller. Counting attempts (stamped before the provider
-  // call) keeps failed calls from becoming a free retry loop.
+  // Rate limit per caller, atomically: a plain check-then-write would let a
+  // parallel burst all pass before any stamp lands. Existing keys claim the
+  // slot with a conditional UPDATE (only one concurrent request can move
+  // `last` forward past the cutoff); first-timers race on the unique index
+  // and losers are limited. Attempts are stamped before the provider call
+  // so failures are not free retries.
   if (policy.rateLimitSeconds > 0) {
     const caller = e.auth ? e.auth.id : `ip:${e.realIP()}`
     const key = `${appName}:${caller}`
     const now = Date.now()
+    const nowStr = new Date(now).toISOString().replace('T', ' ')
+    const cutoffStr = new Date(now - policy.rateLimitSeconds * 1000).toISOString().replace('T', ' ')
+
     let stamp
     try {
       stamp = e.app.findFirstRecordByFilter('ai_rate', 'key = {:key}', { key })
     } catch (err) {
       stamp = null
     }
+
     if (stamp) {
-      const last = new Date(String(stamp.getString('last')).replace(' ', 'T')).getTime()
-      const waitMs = policy.rateLimitSeconds * 1000 - (now - last)
-      if (waitMs > 0) {
-        const retryAfter = Math.ceil(waitMs / 1000)
+      let claimed = 0
+      try {
+        const result = e.app
+          .db()
+          .newQuery('UPDATE ai_rate SET last = {:now}, count = count + 1 WHERE key = {:key} AND last <= {:cutoff}')
+          .bind({ now: nowStr, key, cutoff: cutoffStr })
+          .execute()
+        claimed = result.rowsAffected()
+      } catch (err) {
+        claimed = 0
+      }
+      if (!claimed) {
+        const last = new Date(String(stamp.getString('last')).replace(' ', 'T')).getTime()
+        const retryAfter = Math.max(1, Math.ceil((policy.rateLimitSeconds * 1000 - (now - last)) / 1000))
         return e.json(429, {
           code: 'rate_limited',
           retryAfter,
           message: `rate limited: try again in ${retryAfter}s`,
         })
       }
-      stamp.set('last', new Date(now).toISOString().replace('T', ' '))
-      stamp.set('count', (stamp.getInt('count') || 0) + 1)
     } else {
-      const collection = e.app.findCollectionByNameOrId('ai_rate')
-      stamp = new Record(collection)
-      stamp.set('key', key)
-      stamp.set('last', new Date(now).toISOString().replace('T', ' '))
-      stamp.set('count', 1)
+      try {
+        const collection = e.app.findCollectionByNameOrId('ai_rate')
+        const record = new Record(collection)
+        record.set('key', key)
+        record.set('last', nowStr)
+        record.set('count', 1)
+        e.app.save(record)
+      } catch (err) {
+        return e.json(429, {
+          code: 'rate_limited',
+          retryAfter: policy.rateLimitSeconds,
+          message: `rate limited: try again in ${policy.rateLimitSeconds}s`,
+        })
+      }
     }
-    e.app.save(stamp)
   }
 
   // Key validation and provider translation come after policy so missing

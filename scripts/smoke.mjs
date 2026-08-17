@@ -394,7 +394,9 @@ await test('hooks: visit stats increment anonymously', async () => {
   assert.equal(invalid.status, 400)
 })
 
-// Clear rate stamps so smoke reruns inside the rate window do not flake.
+// Clear rate stamps so smoke reruns inside the rate window do not flake,
+// then pre-seed an expired stamp for the primary caller so the chat test
+// exercises the atomic UPDATE-claim path (not just first-time creation).
 {
   const stale = await fetch(`${BASE}/api/collections/ai_rate/records?perPage=200`, {
     headers: { Authorization: su.token },
@@ -405,6 +407,15 @@ await test('hooks: visit stats increment anonymously', async () => {
       headers: { Authorization: su.token },
     })
   }
+  await api(
+    '/api/collections/ai_rate/records',
+    {
+      key: `hello:${testUser.id}`,
+      last: new Date(Date.now() - 5 * 60 * 1000).toISOString().replace('T', ' '),
+      count: 7,
+    },
+    su.token
+  )
 }
 
 await test('ai: anonymous requests rejected by default policy', async () => {
@@ -493,6 +504,24 @@ await test('ai: second prompt inside the window is rate limited', async () => {
     () => cubby.ai.chat({ messages: GREETING }),
     (e) => e.code === 'rate_limited' && e.status === 429 && e.retryAfter >= 1 && e.retryAfter <= 60
   )
+})
+
+await test('ai: parallel burst cannot slip past the rate limit', async () => {
+  // Five simultaneous first requests on a fresh caller key: the unique
+  // index and atomic claim must let exactly one through.
+  const results = await Promise.all(
+    Array.from({ length: 5 }, () =>
+      fetch(`${BASE}/_cubby/ai/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: impersonated2.token },
+        body: JSON.stringify({ app: 'hello', messages: GREETING }),
+      }).then((r) => r.status)
+    )
+  )
+  const through = results.filter((s) => s === 200 || s === 503).length
+  const limited = results.filter((s) => s === 429).length
+  assert.equal(through, 1, `exactly one of the burst passes (got ${JSON.stringify(results)})`)
+  assert.equal(limited, 4, 'the rest are rate limited')
 })
 
 await test('ai: allowedUsers email globs gate access', async () => {
