@@ -67,13 +67,17 @@ All deployment-specific state lives in cubby.config.json and app directories
 the template ignores it; a deployment repo may commit its own. CI does not
 need it: deploy.yml passes PHIO_INSTANCE_NAME, which takes precedence.
 
-## First deploy requires a power cycle
+## Deploys with new hooks or migrations require a real dashboard power cycle
 
-Uploading pb_hooks and pb_migrations to a fresh instance did not trigger the
-documented auto-restart; collections appeared only after powering the
-instance off and on in the dashboard (or via the mothership API). Documented
-in the deploy skill. Subsequent pb_hooks edits are supposed to restart the
-instance automatically; do not rely on it after large syncs.
+Uploading pb_hooks and pb_migrations does not trigger PocketBase's
+documented pb_hooks auto-restart (SFTP writes appear not to fire the
+watcher across PocketHost's mounts). Worse, "power cycling" through the
+mothership API (PUT instance {power:false/true}) returns 200 but does not
+stop a running container: the instance served requests and ran crons
+straight through a one-minute "off" window. The only reliable lever is the
+dashboard's power button, and an open browser tab's realtime (SSE)
+connection can keep the instance alive, so close tabs or expect to wait.
+Static pb_public changes need no restart (but see the CDN cache note).
 
 ## Superuser impersonation powers local testing
 

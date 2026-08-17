@@ -27,3 +27,5 @@ migrate(
     app.delete(app.findCollectionByNameOrId('app_usage'))
   }
 )
+
+// deploy nudge
