@@ -90,8 +90,10 @@ async function boot() {
   }
 
   // Anonymous visit beacon for the discovery site's usage sorting.
-  // Fire-and-forget, browser only, no user data attached.
-  if (typeof document !== 'undefined' && state.app !== '_root') {
+  // Fire-and-forget, browser only, no user data attached. Embedded
+  // contexts (dashboard hover previews, third-party iframes) do not count.
+  const isTopWindow = typeof window === 'undefined' || window.self === window.top
+  if (typeof document !== 'undefined' && state.app !== '_root' && isTopWindow) {
     try {
       fetch(`${state.baseUrl || ''}/_cubby/stats/visit`, {
         method: 'POST',
