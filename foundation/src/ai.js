@@ -6,7 +6,14 @@ import { CubbyError } from './errors.js'
  * registry aliases (cubby.config.json ai.models); provider API keys live in
  * instance env vars and never reach the client.
  *
- * @param {{config: {ai?: {defaultModel?: string, models?: object}} | null, baseUrl: string}} state
+ * Usage costs real money, so the proxy enforces each app's policy from its
+ * committed cubby.json "ai" block: a models allowlist (empty by default,
+ * which blocks AI entirely), signed-in users only unless allowAnonymous,
+ * and a per-caller rate limit (default 1 prompt per 60s). Expect and
+ * handle the codes: model_not_allowed, auth_required, rate_limited
+ * (carries .retryAfter seconds), provider_unconfigured.
+ *
+ * @param {{app: string, config: {ai?: {defaultModel?: string, models?: object}} | null, baseUrl: string}} state
  * @param {import('pocketbase').default} pb
  */
 export function createAi(state, pb) {
@@ -24,9 +31,6 @@ export function createAi(state, pb) {
       if (!Array.isArray(messages) || messages.length === 0) {
         throw new CubbyError('bad_request', 'messages array required')
       }
-      if (!pb.authStore.isValid) {
-        throw new CubbyError('auth_required', 'sign in before using cubby.ai')
-      }
 
       const registry = state.config?.ai?.models || {}
       const alias = model || state.config?.ai?.defaultModel
@@ -37,13 +41,13 @@ export function createAi(state, pb) {
         )
       }
 
+      const headers = { 'Content-Type': 'application/json' }
+      if (pb.authStore.isValid) headers.Authorization = pb.authStore.token
+
       const res = await fetch(`${state.baseUrl || ''}/_cubby/ai/chat`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: pb.authStore.token,
-        },
-        body: JSON.stringify({ model: alias, messages, options: options || {} }),
+        headers,
+        body: JSON.stringify({ app: state.app, model: alias, messages, options: options || {} }),
       })
 
       let body
@@ -55,9 +59,11 @@ export function createAi(state, pb) {
         })
       }
       if (!res.ok) {
-        throw new CubbyError(body.code || 'provider_error', body.message || `AI proxy failed with ${res.status}`, {
+        const err = new CubbyError(body.code || 'provider_error', body.message || `AI proxy failed with ${res.status}`, {
           status: res.status,
         })
+        if (typeof body.retryAfter === 'number') err.retryAfter = body.retryAfter
+        throw err
       }
       return body
     },

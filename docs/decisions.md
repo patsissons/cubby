@@ -127,6 +127,21 @@ app_usage is writable only by the /_cubby/stats/visit hook (system
 context), which validates the app against sites.json. The foundation fires
 the visit beacon on app boot: anonymous by design, no user linkage.
 
+## AI cost controls are server-enforced and deny-by-default
+
+Because AI calls cost money per use, policy lives where clients cannot
+bypass it: the proxy hook reads the calling app's committed cubby.json.
+Defaults are maximally conservative (empty model allowlist blocks AI
+entirely, signed-in users only, one prompt per 60s per caller), and apps
+opt in explicitly via an "ai" block. Rate stamps are recorded before the
+provider call so failed calls are not free retries, and live in the
+hook-only ai_rate collection. The app name in the request is a claim, not
+proof: a forged claim can only reach model/rate combinations some
+committed manifest already grants, which is the platform's single-operator
+trust model working as intended. Client-side "instantiation options" were
+rejected: any browser can craft raw requests, so advisory JS settings
+would protect nothing.
+
 ## Local dev binary pinned to PocketHost's line
 
 scripts/dev.mjs pins PocketBase 0.39.x (PB_VERSION env to override) to match

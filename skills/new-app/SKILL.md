@@ -98,7 +98,18 @@ cubby.identity.user                            // record | null
 await cubby.identity.logout()
 ```
 
-### AI: cubby.ai (non-streaming, signed-in users only)
+### AI: cubby.ai (non-streaming, blocked until the app opts in)
+
+AI costs real money, so apps declare their policy in cubby.json; without an
+`ai` block every model is rejected with `model_not_allowed`:
+
+```json
+"ai": { "models": ["gemini-flash"] }
+```
+
+Optional keys: `"allowAnonymous": true` (default false: signed-in users
+only) and `"rateLimitSeconds": 30` (default 60 between prompts per caller;
+0 disables). Declare only the models the app actually needs.
 
 ```js
 const res = await cubby.ai.chat({
@@ -112,8 +123,9 @@ const res = await cubby.ai.chat({
 res.text                                 // also: res.usage, res.model, res.provider
 ```
 
-Handle `provider_unconfigured` gracefully: not every deployment sets every
-provider key.
+Handle these errors gracefully: `provider_unconfigured` (deployment has no
+key for that provider), `model_not_allowed` (not in the app's allowlist),
+and `rate_limited` (err.retryAfter says how many seconds to wait).
 
 ### Rooms: cubby.rooms
 

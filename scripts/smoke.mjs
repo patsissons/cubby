@@ -394,11 +394,24 @@ await test('hooks: visit stats increment anonymously', async () => {
   assert.equal(invalid.status, 400)
 })
 
-await test('ai: anonymous requests rejected', async () => {
+// Clear rate stamps so smoke reruns inside the rate window do not flake.
+{
+  const stale = await fetch(`${BASE}/api/collections/ai_rate/records?perPage=200`, {
+    headers: { Authorization: su.token },
+  }).then((r) => r.json())
+  for (const row of stale.items || []) {
+    await fetch(`${BASE}/api/collections/ai_rate/records/${row.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: su.token },
+    })
+  }
+}
+
+await test('ai: anonymous requests rejected by default policy', async () => {
   const res = await fetch(`${BASE}/_cubby/ai/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }),
+    body: JSON.stringify({ app: 'hello', messages: [{ role: 'user', content: 'hi' }] }),
   })
   assert.equal(res.status, 401)
 })
@@ -408,6 +421,25 @@ await test('ai: unknown model alias throws client-side', async () => {
     () => cubby.ai.chat({ messages: [{ role: 'user', content: 'hi' }], model: 'nope' }),
     (e) => e.code === 'model_unknown'
   )
+})
+
+await test('ai: models outside the app allowlist rejected', async () => {
+  // claude-haiku is in the registry but not in hello's allowlist.
+  await assert.rejects(
+    () => cubby.ai.chat({ messages: [{ role: 'user', content: 'hi' }], model: 'claude-haiku' }),
+    (e) => e.code === 'model_not_allowed' && e.status === 403
+  )
+})
+
+await test('ai: apps without an ai block are blocked entirely', async () => {
+  const impersonatedDocs = await fetch(`${BASE}/_cubby/ai/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: impersonated.token },
+    body: JSON.stringify({ app: 'docs', model: 'gemini-flash', messages: [{ role: 'user', content: 'hi' }] }),
+  })
+  assert.equal(impersonatedDocs.status, 403)
+  const body = await impersonatedDocs.json()
+  assert.equal(body.code, 'model_not_allowed')
 })
 
 await test('ai: chat proxies or reports provider_unconfigured cleanly', async () => {
@@ -431,6 +463,15 @@ await test('ai: chat proxies or reports provider_unconfigured cleanly', async ()
       throw err
     }
   }
+})
+
+await test('ai: second prompt inside the window is rate limited', async () => {
+  // The previous test consumed this caller's slot (attempts count even when
+  // the provider is unconfigured, so failures are not a free retry loop).
+  await assert.rejects(
+    () => cubby.ai.chat({ messages: [{ role: 'user', content: 'again' }] }),
+    (e) => e.code === 'rate_limited' && e.status === 429 && e.retryAfter >= 1 && e.retryAfter <= 60
+  )
 })
 
 if (created) await cubby.db.collection('guestbook').delete(created.id).catch(() => {})

@@ -191,10 +191,13 @@ function wireAi() {
       })
       output.textContent = `${res.text}\n(${res.model} via ${res.provider}, ${res.usage.output} tokens)`
     } catch (err) {
-      output.textContent =
-        err.code === 'provider_unconfigured'
-          ? `no API key configured for the default model's provider: ${err.message}`
-          : `AI error: ${err.message}`
+      if (err.code === 'rate_limited') {
+        output.textContent = `easy there: one prompt a minute (retry in ${err.retryAfter || 60}s)`
+      } else if (err.code === 'provider_unconfigured') {
+        output.textContent = `no API key configured for the default model's provider: ${err.message}`
+      } else {
+        output.textContent = `AI error: ${err.message}`
+      }
     }
   }
 }

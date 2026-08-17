@@ -25,4 +25,29 @@ function resolveModel(alias) {
   return { alias: key, provider: entry.provider, id: entry.id }
 }
 
-module.exports = { loadCubbyConfig, resolveModel }
+/**
+ * Load an app's AI policy from its committed manifest. Deny-by-default:
+ * apps without an ai block (or without a manifest at all) get no models.
+ * @param {string} app
+ * @returns {{models: string[], allowAnonymous: boolean, rateLimitSeconds: number}}
+ */
+function loadAppAiPolicy(app) {
+  const defaults = { models: [], allowAnonymous: false, rateLimitSeconds: 60 }
+  let manifest = {}
+  try {
+    manifest = JSON.parse(toString($os.readFile(`${__hooks}/../pb_public/${app}/cubby.json`)))
+  } catch (err) {
+    return defaults
+  }
+  const ai = manifest.ai || {}
+  return {
+    models: Array.isArray(ai.models) ? ai.models.map(String) : defaults.models,
+    allowAnonymous: ai.allowAnonymous === true,
+    rateLimitSeconds:
+      typeof ai.rateLimitSeconds === 'number' && ai.rateLimitSeconds >= 0
+        ? ai.rateLimitSeconds
+        : defaults.rateLimitSeconds,
+  }
+}
+
+module.exports = { loadCubbyConfig, resolveModel, loadAppAiPolicy }

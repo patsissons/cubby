@@ -168,6 +168,27 @@ provider (Anthropic messages, OpenAI responses, Gemini generateContent) with
 a 60s timeout, and normalizes to `{ text, usage: { input, output }, model,
 provider }`. A missing key returns `provider_unconfigured` naming the env var.
 
+### Cost controls (per-app policy)
+
+AI usage costs real money, so the proxy enforces each app's policy
+server-side from the app's committed `cubby.json`:
+
+```json
+"ai": {
+  "models": ["gemini-flash"],   // allowlist of registry aliases; DEFAULT []
+  "allowAnonymous": false,      // default false: signed-in users only
+  "rateLimitSeconds": 60        // min seconds between prompts per caller; 0 disables
+}
+```
+
+No `ai` block means no AI: the empty allowlist rejects every model with
+`model_not_allowed` (403). Rate limiting is per app per caller (user id, or
+client IP for anonymous-enabled apps), stamped before the provider call so
+failures are not free retries; violations return `rate_limited` (429) with
+a `retryAfter` seconds field that `cubby.ai.chat` surfaces on the thrown
+CubbyError. The app name in the request is the caller's claim: a forged
+claim can only ever reach models some committed manifest already allows.
+
 Keys: set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` in the
 PocketHost dashboard (instance > Secrets), then power the instance off and on.
 

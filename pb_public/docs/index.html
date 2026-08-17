@@ -200,8 +200,13 @@ await cubby.fs.read('data.json', { app: 'otherapp' }) // cross-app read</code></
 
 res.text                            // plus res.usage, res.model, res.provider</code></pre>
           <p>
-            Handle <code>provider_unconfigured</code> gracefully: not every deployment sets every
-            provider's key. Unknown aliases throw <code>model_unknown</code> before any request.
+            AI costs real money, so it is off until an app opts in: the app's
+            <code>cubby.json</code> declares an <code>ai.models</code> allowlist (empty means
+            blocked), calls are signed-in-only unless <code>allowAnonymous</code> is set, and each
+            caller gets one prompt per <code>rateLimitSeconds</code> (default 60), enforced
+            server-side. Handle the error codes: <code>model_not_allowed</code>,
+            <code>rate_limited</code> (with <code>err.retryAfter</code> seconds), and
+            <code>provider_unconfigured</code>.
           </p>
         </section>
 

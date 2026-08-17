@@ -10,5 +10,8 @@
     "guestbook",
     "rooms",
     "ai"
-  ]
+  ],
+  "ai": {
+    "models": ["gemini-flash"]
+  }
 }
