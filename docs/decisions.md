@@ -154,7 +154,11 @@ The hello demo uses them so the browser can only vary the greeted name.
 
 Verified live: deleting a directory locally made phio print "removing
 folder" on deploy, but the remote file was still there over SFTP (and
-still served). Treat phio deploys as add/replace only. When removing an
+still served). Treat phio deploys as add/replace only. Uploads can also
+phantom: phio has twice reported uploading a NEW file that never landed
+(its sync state then believes the file exists, so later deploys skip it).
+After deploying anything critical, verify over SFTP or by content probe;
+re-upload by changing the file's content, or use sftp put directly. When removing an
 app (or any file) from a deployment, delete the remote copy manually over
 SFTP (ftp.pockethost.io:2222, account email + registered SSH key, paths
 under `<instance>/`). Missing static paths fall back to the discovery

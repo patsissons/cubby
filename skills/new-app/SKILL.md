@@ -111,9 +111,10 @@ Optional keys: `"allowAnonymous": true` (default false: signed-in users
 only), `"rateLimitSeconds": 30` (default 60 between prompts per caller; 0
 disables), `"allowedUsers": ["*@corp.com"]` (email globs restricting who
 may call), `"maxChars"` / `"maxMessages"` / `"maxTokens"` size caps
-(defaults 4000/16/1000), and `"messagePatterns"` (role -> regex). Prefer
-messagePatterns whenever the app's prompts are templates: with patterns
-declared, every message's role needs an entry and its content must match,
+(defaults 4000/16/1000), and `"messagePatterns"` (role -> regex, or a list
+of regexes where matching any one passes). Prefer messagePatterns whenever
+the app's prompts are templates: with patterns declared, every message's
+role needs an entry and its content must match,
 so browsers cannot send arbitrary prompts on the deployment's API key (see
 hello's cubby.json for the shape). Declare only the models the app needs.
 

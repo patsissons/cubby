@@ -87,13 +87,15 @@ routerAdd('POST', '/_cubby/ai/chat', (e) => {
   }
   if (policy.messagePatterns) {
     for (const msg of messages) {
-      const pattern = policy.messagePatterns[msg.role]
-      let ok = false
-      try {
-        ok = typeof pattern === 'string' && new RegExp(pattern).test(msg.content)
-      } catch (err) {
-        ok = false
-      }
+      const entry = policy.messagePatterns[msg.role]
+      const patterns = Array.isArray(entry) ? entry : entry !== undefined ? [entry] : []
+      const ok = patterns.some((pattern) => {
+        try {
+          return typeof pattern === 'string' && new RegExp(pattern).test(msg.content)
+        } catch (err) {
+          return false
+        }
+      })
       if (!ok) {
         return e.json(403, {
           code: 'content_not_allowed',

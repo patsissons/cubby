@@ -184,7 +184,7 @@ server-side from the app's committed `cubby.json`:
   "maxTokens": 1000,                // clamp on options.maxTokens (default 1000)
   "messagePatterns": {              // per-role content regexes (default: none)
     "system": "^You greet people warmly in one short sentence\\.$",
-    "user": "^Say hello to .{1,80}!$"
+    "user": ["^Say hello to .{1,80}!$", "^Wish .{1,80} a happy birthday!$"]
   }
 }
 ```
@@ -198,8 +198,9 @@ CubbyError.
 
 `messagePatterns` turns an AI feature into a parameterized template: when
 declared, EVERY message's role must have an entry and its content must
-match, so the browser cannot inject arbitrary prompts (unlisted roles are
-rejected too; the hello app's greeting demo works this way). `allowedUsers`
+match at least one of that role's patterns (a single regex or a list), so
+the browser cannot inject arbitrary prompts (unlisted roles are rejected
+too; the hello app's greeting demo works this way). `allowedUsers`
 gates usage to matching signed-in emails (`user_not_allowed`), and the size
 caps return `content_too_long` (413). Checks run before the rate stamp; the
 app name in the request is the caller's claim, so a forged claim can only

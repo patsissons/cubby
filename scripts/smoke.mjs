@@ -530,6 +530,31 @@ await test('ai: allowedUsers email globs gate access', async () => {
     fixture(['*@elsewhere.example'])
     res = await chat(impersonated.token)
     assert.equal(res.status, 403, 'non-matching wildcard rejected')
+
+    // Pattern lists: a role's value may be an array; matching any passes.
+    writeFileSync(
+      new URL('cubby.json', dir),
+      JSON.stringify({
+        name: '_smoke-acl',
+        hidden: true,
+        ai: {
+          models: ['gemini-flash'],
+          rateLimitSeconds: 0,
+          messagePatterns: { user: ['^hi$', '^hello$'] },
+        },
+      })
+    )
+    const say = (content) =>
+      fetch(`${BASE}/_cubby/ai/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: impersonated.token },
+        body: JSON.stringify({ app: '_smoke-acl', messages: [{ role: 'user', content }] }),
+      })
+    res = await say('hello')
+    assert.ok([200, 503].includes(res.status), `second list pattern matches (got ${res.status})`)
+    res = await say('yo')
+    assert.equal(res.status, 403, 'content outside the pattern list rejected')
+    assert.equal((await res.json()).code, 'content_not_allowed')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
