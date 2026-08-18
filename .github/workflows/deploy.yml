@@ -45,8 +45,23 @@ jobs:
 
       - name: Deploy via phio
         if: env.PHIO_USERNAME != ''
+        env:
+          PHIO_DEPLOY_KEY: ${{ secrets.PHIO_DEPLOY_KEY }}
+          PHIO_DEPLOY_KEY_PUB: ${{ secrets.PHIO_DEPLOY_KEY_PUB }}
         run: |
-          # phio's CLI runs under a tsx shebang, so tsx must be on PATH too
+          # phio deploys over SFTP with the ed25519 key registered on the
+          # PocketHost account. Runners are ephemeral, so restore that key
+          # from secrets; without it phio generates a fresh key that the
+          # account rejects. phio's CLI runs under a tsx shebang, so tsx
+          # must be on PATH too.
+          if [ -z "$PHIO_DEPLOY_KEY" ]; then
+            echo "::error::PHIO_DEPLOY_KEY / PHIO_DEPLOY_KEY_PUB secrets not set (copy ~/.config/phio-nodejs/phio_deploy_ed25519 and .pub)"
+            exit 1
+          fi
+          mkdir -p ~/.config/phio-nodejs
+          printf '%s\n' "$PHIO_DEPLOY_KEY" > ~/.config/phio-nodejs/phio_deploy_ed25519
+          printf '%s\n' "$PHIO_DEPLOY_KEY_PUB" > ~/.config/phio-nodejs/phio_deploy_ed25519.pub
+          chmod 600 ~/.config/phio-nodejs/phio_deploy_ed25519
           npm install -g phio tsx
           phio deploy -v
 
