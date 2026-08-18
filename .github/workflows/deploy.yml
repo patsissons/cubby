@@ -46,7 +46,8 @@ jobs:
       - name: Deploy via phio
         if: env.PHIO_USERNAME != ''
         run: |
-          npm install -g phio
+          # phio's CLI runs under a tsx shebang, so tsx must be on PATH too
+          npm install -g phio tsx
           phio deploy -v
 
       - name: Deploy skipped (no credentials)
