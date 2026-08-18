@@ -111,3 +111,8 @@ blockquote {
   color: var(--muted);
   white-space: pre-wrap;
 }
+
+#md-status {
+  color: var(--muted);
+  font-size: 0.85rem;
+}

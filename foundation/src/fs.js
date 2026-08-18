@@ -61,7 +61,13 @@ export function createFs(state, pb) {
    */
   async function find(app, path) {
     try {
-      return await files().getFirstListItem(pb.filter('app = {:app} && path = {:path}', { app, path }))
+      // requestKey: null disables the SDK's auto-cancellation, which would
+      // otherwise abort one of two concurrent fs calls (e.g. two pasted
+      // images uploading at once) because they share a collection+method.
+      return await files().getFirstListItem(
+        pb.filter('app = {:app} && path = {:path}', { app, path }),
+        { requestKey: null }
+      )
     } catch (err) {
       if (err && err.status === 404) return null
       throw toCubbyError(err)
@@ -90,7 +96,7 @@ export function createFs(state, pb) {
      * Create or replace the file at path (upsert on (app, path)).
      * @param {string} path
      * @param {string | Blob | File} content
-     * @returns {Promise<{path: string, size: number, updated: string}>}
+     * @returns {Promise<{path: string, size: number, updated: string, url: string}>}
      */
     async write(path, content) {
       const app = state.app
@@ -108,9 +114,11 @@ export function createFs(state, pb) {
       try {
         const existing = await find(app, clean)
         const record = existing
-          ? await files().update(existing.id, { file, size: file.size })
-          : await files().create({ app, path: clean, file, size: file.size })
-        return { path: clean, size: file.size, updated: record.updated }
+          ? await files().update(existing.id, { file, size: file.size }, { requestKey: null })
+          : await files().create({ app, path: clean, file, size: file.size }, { requestKey: null })
+        // url comes for free here (the record is in hand) and saves the
+        // caller a fs.url() round trip — pasted-image flows use it.
+        return { path: clean, size: file.size, updated: record.updated, url: fileUrl(record) }
       } catch (err) {
         throw toCubbyError(err)
       }
@@ -163,7 +171,7 @@ export function createFs(state, pb) {
         filter += ' && ' + pb.filter('path ~ {:prefix}', { prefix: `${clean}%` })
       }
       try {
-        const records = await files().getFullList({ filter, sort: 'path' })
+        const records = await files().getFullList({ filter, sort: 'path', requestKey: null })
         return records.map((r) => ({ path: r.path, size: r.size || 0, updated: r.updated }))
       } catch (err) {
         throw toCubbyError(err)
@@ -178,7 +186,7 @@ export function createFs(state, pb) {
     async remove(path) {
       const record = await findOrThrow(state.app, normalizePath(path))
       try {
-        await files().delete(record.id)
+        await files().delete(record.id, { requestKey: null })
       } catch (err) {
         throw toCubbyError(err)
       }

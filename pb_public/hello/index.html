@@ -18,6 +18,7 @@
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="stylesheet" href="style.css" />
     <script src="/js/foundation.js" defer></script>
+    <script src="/js/markdown.js" defer></script>
     <script src="app.js" defer></script>
   </head>
   <body>
@@ -49,6 +50,13 @@
           <button id="note-load">load</button>
           <span id="note-status"></span>
         </div>
+      </section>
+
+      <section id="markdown-section">
+        <h2>Markdown (cubby.markdown)</h2>
+        <p class="hint">Write/Preview tabs; paste or drop an image while signed in to upload it.</p>
+        <div id="md-editor"></div>
+        <span id="md-status"></span>
       </section>
 
       <section id="rooms-section">

@@ -169,3 +169,35 @@ site with HTTP 200, so verify deletions by content, not status code.
 scripts/dev.mjs pins PocketBase 0.39.x (PB_VERSION env to override) to match
 what PocketHost currently runs, so migrations and hook APIs behave the same
 locally and deployed.
+
+## Markdown is a hand-rolled escaped-by-construction subset in an opt-in bundle
+
+The repo vendors zero third-party libraries and apps avoid innerHTML for
+user data, so a markdown capability had two honest options: vendor
+marked + DOMPurify (~45KB gz, the first dependencies, and a sanitizer
+allowlist to maintain) or write a small GFM subset that escapes every
+source character at emission and vets URL schemes. The subset won: safety
+comes from construction rather than filtering, the whole module is ~6KB
+gz, and the deliberate cuts (no raw HTML passthrough, no reference-style
+links, no setext headings) are features for user-generated content, not
+gaps. render() returns an HTML string — not an element — because the
+renderer must run DOM-free in Node for scripts/markdown-tests.mjs, and an
+element return would add no safety (it would be built via innerHTML
+internally anyway). The string is documented as the one sanctioned
+innerHTML source.
+
+Delivery is a separate /js/markdown.js bundle rather than growing
+foundation.js: editor UI is a per-app choice, and apps that never render
+markdown shouldn't fund it on every page load. Both scripts use defer, so
+"foundation first, markdown second" is guaranteed by document order — no
+polling. The editor defaults to GitHub-style Write/Preview tabs (one
+column, works on mobile with no resize logic) with preview: 'split' for a
+live side-by-side pane; its CSS is injected by JS, themed via the app
+token vocabulary (--border, --muted, --accent, --code-bg) with fallbacks,
+and defends against app-global element resets (hello resets ul and input,
+which clipped task checkboxes until the module owned its list layout).
+Pasted images upload as png/jpeg/gif/webp only — SVG is excluded because
+PocketBase serves stored files with their declared content type, and SVG
+scripts on the instance origin. The paste flow also surfaced a latent fs
+bug: the PB SDK auto-cancels same-collection concurrent requests, which
+lost one of two parallel uploads; all fs calls now pass requestKey: null.

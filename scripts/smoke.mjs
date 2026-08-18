@@ -150,6 +150,10 @@ await test('fs: write, read, list, url, remove round trip', async () => {
   assert.equal(meta.path, path)
   assert.ok(meta.size > 0)
 
+  // write() returns the file URL directly (saves paste-upload flows a round trip)
+  assert.ok(meta.url)
+  assert.equal(await fetch(meta.url).then((r) => r.text()), body)
+
   assert.equal(await cubby.fs.read(path), body)
 
   const listing = await cubby.fs.list('smoke/')
@@ -173,6 +177,19 @@ await test('fs: write upserts on same path', async () => {
   const listing = await cubby.fs.list('smoke/upsert.txt')
   assert.equal(listing.length, 1)
   await cubby.fs.remove('smoke/upsert.txt')
+})
+
+await test('fs: concurrent writes to different paths both land', async () => {
+  // Regression: the PB SDK auto-cancels same-collection requests unless
+  // requestKey is disabled, which lost one of two parallel pasted images.
+  const [a, b] = await Promise.all([
+    cubby.fs.write('smoke/parallel-a.txt', 'aaa'),
+    cubby.fs.write('smoke/parallel-b.txt', 'bbb'),
+  ])
+  assert.ok(a.url && b.url)
+  assert.equal(await cubby.fs.read('smoke/parallel-a.txt'), 'aaa')
+  assert.equal(await cubby.fs.read('smoke/parallel-b.txt'), 'bbb')
+  await Promise.all([cubby.fs.remove('smoke/parallel-a.txt'), cubby.fs.remove('smoke/parallel-b.txt')])
 })
 
 await test('fs: rejects traversal and absolute-ish paths', async () => {

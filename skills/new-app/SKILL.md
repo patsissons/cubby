@@ -1,7 +1,7 @@
 ---
 name: new-app
 argument-hint: "<name>: <description>"
-description: Create a micro-site (app) in an existing cubby deployment. Use when asked to add, build, or scaffold a new app, page, tool, game, or site in a cubby repo, or to modify an existing cubby app. Covers app anatomy, the full cubby foundation API (db, fs, identity, ai, rooms), collections/migrations, naming rules, and the required PR shape.
+description: Create a micro-site (app) in an existing cubby deployment. Use when asked to add, build, or scaffold a new app, page, tool, game, or site in a cubby repo, or to modify an existing cubby app. Covers app anatomy, the full cubby foundation API (db, fs, identity, ai, rooms, markdown rendering/editing), collections/migrations, naming rules, and the required PR shape.
 ---
 
 # Building a cubby app
@@ -77,7 +77,8 @@ cubby.db.collection('hello/guestbook')       // cross-app read (convention: neve
 ### File storage: cubby.fs
 
 ```js
-await cubby.fs.write('notes/note.txt', text)          // upserts; string|Blob|File
+const meta = await cubby.fs.write('notes/note.txt', text) // upserts; string|Blob|File
+meta.url                                              // direct file URL, no extra call
 const text = await cubby.fs.read('notes/note.txt')
 const url = await cubby.fs.url('image.png')           // for <img src>
 const files = await cubby.fs.list('notes/')           // [{ path, size, updated }]
@@ -88,6 +89,56 @@ await cubby.fs.read('data.json', { app: 'otherapp' }) // cross-app read
 Reads are public; writes need a signed-in user. Files are shared per
 (app, path): for per-user data, put the user id in the path
 (`notes/${cubby.identity.user.id}.txt`).
+
+### Markdown: cubby.markdown (opt-in script)
+
+When an app needs markdown — rendering user text, notes, comments, an
+editor — use this module. NEVER hand-roll a markdown renderer, sanitizer,
+or paste-upload handler. Load it with one extra tag, after foundation.js
+(both defer; order matters):
+
+```html
+<script src="/js/foundation.js" defer></script>
+<script src="/js/markdown.js" defer></script>
+```
+
+```js
+el.innerHTML = cubby.markdown.render(mdText)   // safe by construction
+cubby.markdown.render(md, { linkTarget: '_blank' })  // adds rel="noopener noreferrer"
+```
+
+`render()` returns an HTML string in which every source character is
+escaped and URLs are vetted (http/https/mailto/relative only) — raw HTML
+in the markdown renders as visible text. It is the ONLY sanctioned
+innerHTML source; never concatenate raw user data around it. Style the
+container yourself or call `cubby.markdown.injectStyles()` and add class
+`cubby-markdown`. Supported: GFM subset (headings, emphasis, links,
+images, code, nested lists, task lists, tables, blockquotes); not
+supported: raw HTML passthrough, reference-style `[a][b]` links, setext
+headings.
+
+```js
+const ed = cubby.markdown.editor($('editor'), {
+  value: '',                      // initial markdown
+  preview: true,                  // Write|Preview tabs; 'split' = live side-by-side; false = none
+  rows: 8,
+  upload: { pathPrefix: 'uploads/' },  // or false; paste/drop images upload to cubby.fs
+  onChange(value) {},
+  onUpload({ name, path, url }) {},
+  onError(err) {},                // err.code: auth_required (signed-out upload), file_too_large
+})
+ed.value                          // get/set the markdown
+ed.refresh(); ed.focus(); ed.destroy()
+```
+
+Pasting or dropping an image inserts an `![Uploading name…](…)`
+placeholder that is swapped for the real file URL when the upload lands
+(GitHub PR editor behavior). Uploads go to
+`uploads/<userId>/<token>.<ext>` via cubby.fs and require sign-in —
+surface `auth_required` from onError. png/jpeg/gif/webp only.
+`cubby.markdown.attachImageUpload(textarea, opts)` wires the same
+paste/drop flow onto your own textarea and returns a detach function.
+See the "Markdown" section of `pb_public/hello/` for a working example.
 
 ### Identity: cubby.identity
 

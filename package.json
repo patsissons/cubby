@@ -15,6 +15,7 @@
     "build:foundation": "node foundation/build.mjs",
     "build:manifest": "node scripts/build-manifest.mjs",
     "new-app": "node scripts/new-app.mjs",
+    "test:markdown": "node scripts/markdown-tests.mjs",
     "seed": "node scripts/seed.mjs",
     "deploy": "phio deploy -v"
   },

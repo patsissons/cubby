@@ -91,7 +91,8 @@ Backed by the root-level `files` collection: one record per (app, path),
 to the current app; writes upsert.
 
 ```js
-await cubby.fs.write('notes/note.txt', 'hello')      // string | Blob | File
+const meta = await cubby.fs.write('notes/note.txt', 'hello') // string | Blob | File
+meta.url                                             // direct file URL (no extra call)
 const text = await cubby.fs.read('notes/note.txt')   // utf-8 string
 const blob = await cubby.fs.readBlob('notes/note.txt')
 const url  = await cubby.fs.url('notes/note.txt')    // direct PB file URL
@@ -103,7 +104,62 @@ const data = await cubby.fs.read('data.json', { app: 'otherapp' })
 ```
 
 Paths are normalized (no leading slash, no `..`, no backslashes). String
-writes get a content type from a small extension map.
+writes get a content type from a small extension map. All fs calls disable
+the PB SDK's request auto-cancellation so concurrent operations (e.g. two
+images uploading at once) don't abort each other.
+
+## Markdown: cubby.markdown (opt-in)
+
+Markdown rendering and editing ship as a separate bundle so apps that
+don't use it pay zero bytes. Apps opt in with one extra tag, after the
+foundation (both defer, so execution order is guaranteed):
+
+```html
+<script src="/js/foundation.js" defer></script>
+<script src="/js/markdown.js" defer></script>
+```
+
+The source lives in `foundation/src/markdown/` and builds to
+`pb_public/js/markdown.js` (attaches `cubby.markdown`) and
+`markdown.esm.js` (exports `render` and `createMarkdown`; `render` is pure
+and runs in Node — `scripts/markdown-tests.mjs` tests the shipped
+artifact). Its gzip budget is 20KB (currently ~6KB).
+
+```js
+el.innerHTML = cubby.markdown.render('# hi **there**')
+cubby.markdown.render(md, { linkTarget: '_blank' })  // adds rel="noopener noreferrer"
+
+const ed = cubby.markdown.editor(container, {
+  value: '',
+  preview: true,                       // Write|Preview tabs; 'split' = live pane; false = none
+  upload: { pathPrefix: 'uploads/' },  // or false to disable paste/drop upload
+  onChange(value) {}, onUpload({ name, path, url }) {}, onError(err) {},
+})
+ed.value; ed.refresh(); ed.destroy()
+
+const detach = cubby.markdown.attachImageUpload(textarea, opts) // low-level
+cubby.markdown.injectStyles()        // idempotent; editor() calls it itself
+```
+
+**Safety model: escaped by construction.** The renderer is a hand-rolled
+GFM subset with no dependencies and no sanitizer, because none is needed:
+every source character is escaped at emission, so raw HTML in markdown
+input always renders as visible text, and URLs are vetted (http, https,
+relative; mailto for links only — `javascript:` and friends become empty).
+The returned string is safe for `innerHTML`; the contract breaks only if
+an app concatenates raw user data around it. Subset cuts, documented and
+deliberate: no raw HTML passthrough, no reference-style `[a][b]` links, no
+setext headings, no indented code blocks, single-line list items.
+
+**Paste-image upload** (GitHub PR editor behavior): pasting or dropping an
+image inserts `![Uploading name…](cubby-upload:<token>)` at the cursor,
+uploads to `uploads/<userId>/<token>.<ext>` via `cubby.fs.write`, then
+swaps the placeholder for `![name](url)` — the unique token keeps
+concurrent pastes distinguishable, and edits use `setRangeText` so the
+undo stack survives. Failures remove the placeholder and call `onError`;
+signed-out pastes error with `auth_required` and insert nothing. Image
+types: png/jpeg/gif/webp (SVG is excluded: PocketBase serves files with
+their declared content type, and SVG can script on the instance origin).
 
 ## Identity: cubby.identity
 

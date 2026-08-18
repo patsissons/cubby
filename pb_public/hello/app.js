@@ -113,6 +113,48 @@ function wireNotes() {
   }
 }
 
+// ---- markdown -------------------------------------------------------------
+function wireMarkdown() {
+  const status = $('md-status')
+  // cubby.markdown is opt-in: /js/markdown.js loads after /js/foundation.js
+  if (!cubby.markdown) {
+    status.textContent = 'cubby.markdown missing: load /js/markdown.js after foundation.js'
+    return
+  }
+  const sample = [
+    '## Markdown lives here',
+    '',
+    'Rendering is **escaped by construction** - try `<script>` in a heading.',
+    '',
+    '- [x] render markdown',
+    '- [ ] paste an image below (sign in first)',
+    '',
+    '| subsystem | global |',
+    '| --- | --- |',
+    '| storage | `cubby.fs` |',
+    '',
+    '```js',
+    "const html = cubby.markdown.render('# hi')",
+    '```',
+    '',
+    '[docs](/docs/#markdown)',
+  ].join('\n')
+  cubby.markdown.editor($('md-editor'), {
+    value: sample,
+    rows: 10,
+    upload: { pathPrefix: 'uploads/' },
+    onUploadStart: ({ name }) => {
+      status.textContent = `uploading ${name}...`
+    },
+    onUpload: ({ path }) => {
+      status.textContent = `uploaded to ${path}`
+    },
+    onError: (err) => {
+      status.textContent = err.code === 'auth_required' ? 'sign in to upload images' : err.message
+    },
+  })
+}
+
 // ---- rooms ----------------------------------------------------------------
 async function wireRooms() {
   const bar = $('presence-bar')
@@ -206,6 +248,7 @@ async function main() {
   await cubby.ready
   wireIdentity()
   wireNotes()
+  wireMarkdown()
   wireAi()
   await wireGuestbook()
   await wireRooms()

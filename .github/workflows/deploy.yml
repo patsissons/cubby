@@ -33,6 +33,9 @@ jobs:
       - name: Rebuild artifacts
         run: npm run build
 
+      - name: Markdown renderer tests (pure Node, no server)
+        run: npm run test:markdown
+
       - name: Fail if committed artifacts drifted from a fresh build
         run: |
           git diff --exit-code || {

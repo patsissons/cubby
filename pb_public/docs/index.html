@@ -31,6 +31,7 @@
         <a href="#identity" class="sub">identity</a>
         <a href="#db" class="sub">db</a>
         <a href="#fs" class="sub">fs</a>
+        <a href="#markdown" class="sub">markdown</a>
         <a href="#ai" class="sub">ai</a>
         <a href="#rooms" class="sub">rooms</a>
         <a href="#building">Building an app</a>
@@ -68,7 +69,9 @@
             That script exposes a global <code>cubby</code> object providing a database
             (<a href="#db">db</a>), file storage (<a href="#fs">fs</a>), OAuth login
             (<a href="#identity">identity</a>), AI chat (<a href="#ai">ai</a>), and multi-user
-            rooms (<a href="#rooms">rooms</a>), all backed by the shared PocketBase instance. The
+            rooms (<a href="#rooms">rooms</a>), all backed by the shared PocketBase instance;
+            markdown rendering and editing (<a href="#markdown">markdown</a>) is one more
+            opt-in script tag. The
             root of every deployment is a discovery site listing its apps. Login state is shared
             across all apps on the origin: sign in once, signed in everywhere.
           </p>
@@ -188,7 +191,39 @@ await cubby.fs.remove('notes/note.txt')
 await cubby.fs.read('data.json', { app: 'otherapp' }) // cross-app read</code></pre>
           <p>
             Files are shared per (app, path): for per-user data, put the user id in the path,
-            like <code>notes/${cubby.identity.user.id}.txt</code>.
+            like <code>notes/${cubby.identity.user.id}.txt</code>. <code>write()</code> also
+            returns <code>url</code>, the direct file URL, so upload flows skip a round trip.
+          </p>
+        </section>
+
+        <section id="markdown">
+          <h3>cubby.markdown</h3>
+          <p>
+            Markdown rendering and an editor with live preview and paste-image upload. Opt-in:
+            one extra script tag after the foundation (both <code>defer</code>, so order is
+            guaranteed) — apps that skip it pay zero bytes.
+          </p>
+          <pre><code>&lt;script src="/js/foundation.js" defer&gt;&lt;/script&gt;
+&lt;script src="/js/markdown.js" defer&gt;&lt;/script&gt;</code></pre>
+          <pre><code>el.innerHTML = cubby.markdown.render('# hi **there**')
+
+const ed = cubby.markdown.editor(container, {
+  value: '',
+  preview: true,                       // Write|Preview tabs; 'split' = live pane
+  upload: { pathPrefix: 'uploads/' },  // paste/drop images upload via cubby.fs
+  onUpload({ name, path, url }) {},
+  onError(err) {},                     // auth_required when signed out
+})
+ed.value                               // get/set the markdown</code></pre>
+          <p>
+            The renderer is a dependency-free GFM subset (headings, emphasis, links, images,
+            code, nested and task lists, tables, blockquotes) that escapes every source
+            character at emission and vets URL schemes — raw HTML renders as visible text, so
+            the returned string is safe to assign to <code>innerHTML</code>. Pasting an image
+            inserts an <code>![Uploading…]</code> placeholder that swaps to the real file URL
+            when the upload lands, exactly like the GitHub PR editor. Uploads need a signed-in
+            user and accept png/jpeg/gif/webp. See the markdown section of
+            <a href="/hello/">the hello app</a> for it running live.
           </p>
         </section>
 

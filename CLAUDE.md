@@ -3,7 +3,8 @@
 One repo, one PocketHost (PocketBase) instance, many tiny static web apps:
 each lives in pb_public/<name>/, is served at /<name>/, and gets database,
 file storage, OAuth identity, AI chat, and rooms from the global `cubby`
-object loaded via /js/foundation.js. The forkability rule governs every
+object loaded via /js/foundation.js (plus markdown rendering/editing via
+the opt-in /js/markdown.js, which adds `cubby.markdown`). The forkability rule governs every
 change: all deployment-specific state lives in cubby.config.json and app
 directories (plus their app migrations); platform files are never edited in
 deployment repos, so upstream merges stay clean.
