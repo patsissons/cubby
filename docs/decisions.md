@@ -201,3 +201,18 @@ PocketBase serves stored files with their declared content type, and SVG
 scripts on the instance origin. The paste flow also surfaced a latent fs
 bug: the PB SDK auto-cancels same-collection concurrent requests, which
 lost one of two parallel uploads; all fs calls now pass requestKey: null.
+
+## Asset URLs carry content hashes because the CDN caches per URL
+
+PocketHost's CDN caches pb_public ~4h per URL, and a page and its assets
+expire independently — after a deploy, a fresh index.html can load a
+stale app.js (or vice versa) and the app looks broken for hours (first
+hit: hello's markdown section rendered as an empty card). The manifest
+build now stamps js/css references in every index.html with an 8-char
+sha256 of the referenced file (app.js?v=6d70940a). Changed content gets
+a new URL that has never been cached; a stale page keeps pointing at the
+old URLs, so the worst case is a coherent previous version, never a
+mixed one. The rewrite is anchored to real <script>/<link> tags so
+escaped tag examples inside docs code blocks are left alone, and it
+replaces existing stamps so rebuilds stay drift-free. HTML itself is
+still cached up to 4h; only asset mismatches are eliminated.

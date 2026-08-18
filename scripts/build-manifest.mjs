@@ -2,6 +2,7 @@
 // and copies the root cubby.config.json into pb_public/ so the foundation and
 // server hooks read the same registry the repo declares.
 import { readdirSync, readFileSync, writeFileSync, copyFileSync, existsSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -80,6 +81,44 @@ if (origin) {
     }
   }
   if (rewritten) console.log(`rewrote og origins/site_name for ${rewritten} page(s)`)
+}
+
+// Stamp js/css references with a content hash (?v=xxxxxxxx). The PocketHost
+// CDN caches pb_public ~4h per URL, and index.html and its assets expire
+// independently — without stamps a fresh page can load stale scripts (or
+// vice versa) and appear broken for hours after a deploy. With stamps,
+// changed assets get new URLs immediately; a stale page keeps referencing
+// the old URLs, so viewers see a coherent previous version at worst.
+// Idempotent: existing ?v= stamps are replaced, so rebuilds don't drift.
+{
+  const pages = [path.join(publicDir, 'index.html')]
+  for (const entry of readdirSync(publicDir, { withFileTypes: true })) {
+    if (entry.isDirectory() && existsSync(path.join(publicDir, entry.name, 'index.html'))) {
+      pages.push(path.join(publicDir, entry.name, 'index.html'))
+    }
+  }
+  let stamped = 0
+  for (const page of pages) {
+    const dir = path.dirname(page)
+    const html = readFileSync(page, 'utf8')
+    // Anchored to real <script>/<link> tags so escaped examples inside
+    // <pre><code> blocks (&lt;script src="..."&gt;) are left alone.
+    const updated = html.replace(
+      /(<(?:script|link)\b[^>]*?(?:src|href)=")([^"?#]+?\.(?:js|css))(?:\?v=[0-9a-f]+)?(")/g,
+      (match, pre, ref, post) => {
+        if (/^(?:https?:)?\/\//.test(ref)) return match
+        const file = ref.startsWith('/') ? path.join(publicDir, ref) : path.join(dir, ref)
+        if (!existsSync(file)) return match
+        const hash = createHash('sha256').update(readFileSync(file)).digest('hex').slice(0, 8)
+        return `${pre}${ref}?v=${hash}${post}`
+      }
+    )
+    if (updated !== html) {
+      writeFileSync(page, updated)
+      stamped++
+    }
+  }
+  if (stamped) console.log(`stamped asset versions in ${stamped} page(s)`)
 }
 
 console.log(`sites.json: ${sites.length} app(s): ${sites.map((s) => s.name).join(', ') || '(none)'}`)
