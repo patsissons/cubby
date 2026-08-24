@@ -38,6 +38,10 @@ jobs:
 
       - name: Fail if committed artifacts drifted from a fresh build
         run: |
+          # -N records intent-to-add so `git diff` sees NEW build outputs too.
+          # Without it an uncommitted new bundle is merely untracked, and the
+          # gate passes green on a tree that is missing a file every page needs.
+          git add -A -N
           git diff --exit-code || {
             echo "::error::pb_public artifacts differ from a fresh build. Run 'npm run build' and commit."
             exit 1

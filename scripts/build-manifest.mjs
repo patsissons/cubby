@@ -98,6 +98,8 @@ if (origin) {
     }
   }
   let stamped = 0
+  /** @type {string[]} same-origin refs pointing at files that do not exist */
+  const missing = []
   for (const page of pages) {
     const dir = path.dirname(page)
     const html = readFileSync(page, 'utf8')
@@ -108,7 +110,14 @@ if (origin) {
       (match, pre, ref, post) => {
         if (/^(?:https?:)?\/\//.test(ref)) return match
         const file = ref.startsWith('/') ? path.join(publicDir, ref) : path.join(dir, ref)
-        if (!existsSync(file)) return match
+        // A same-origin ref with no file behind it is a 404 in production and
+        // used to pass silently. With one bundle that was a typo you would
+        // notice; with a bundle per feature it is a tag pointing at a module
+        // nobody built, so fail the build and name it.
+        if (!existsSync(file)) {
+          missing.push(`${path.relative(publicDir, page)} -> ${ref}`)
+          return match
+        }
         const hash = createHash('sha256').update(readFileSync(file)).digest('hex').slice(0, 8)
         return `${pre}${ref}?v=${hash}${post}`
       }
@@ -117,6 +126,10 @@ if (origin) {
       writeFileSync(page, updated)
       stamped++
     }
+  }
+  if (missing.length) {
+    console.error(`missing asset(s) referenced by a <script>/<link> tag:\n  ${missing.join('\n  ')}`)
+    process.exit(1)
   }
   if (stamped) console.log(`stamped asset versions in ${stamped} page(s)`)
 }
