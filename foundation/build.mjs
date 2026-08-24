@@ -9,6 +9,7 @@
 //   editor.js     textarea + preview + paste upload           (needs markdown)
 //   nav.js        sticky two-row site bar                     (needs core)
 //   preview.js    hover-a-link iframe popover                 (needs core)
+//   draw.js       ephemeral shared marks                      (needs core; rooms optional)
 //   foundation.js DEPRECATED all-in-one core+platform, kept for cached pages
 //
 // NOTE: `npm run dev` holds esbuild watch contexts built from THIS file as it
@@ -84,6 +85,9 @@ const MODULES = [
   // preview ships an ESM twin so its framing allowlist -- pure, DOM-free,
   // and security-relevant -- is testable under plain Node.
   { name: 'preview', dir: 'preview', gz: 5, esm: 'index.js' },
+  // draw ships an ESM twin so its path simplification -- pure and DOM-free --
+  // is testable under plain Node.
+  { name: 'draw', dir: 'draw', gz: 6, esm: 'index.js' },
 ]
 
 const banner = (name) => ({ js: `/* cubby ${name} v${pkg.version} (${pkg.repository}) */` })

@@ -6,6 +6,17 @@
 import assert from 'node:assert/strict'
 import { page, bundle as bundleSource } from './widget-harness.mjs'
 
+/**
+ * Structural compare across the jsdom boundary.
+ *
+ * Arrays and objects built inside the jsdom realm have a different Array
+ * prototype, so assert.deepEqual reports "same structure but not
+ * reference-equal" on values that are in fact correct. Round-tripping through
+ * JSON drops the realm.
+ */
+const same = (actual, expected, message) =>
+  assert.deepEqual(JSON.parse(JSON.stringify(actual)), expected, message)
+
 let passed = 0
 async function test(name, fn) {
   try {
@@ -561,6 +572,314 @@ await test('preview.destroy removes the popover and its listeners', async () => 
   pv.destroy()
   assert.equal(pop.isConnected, false)
   assert.equal(p.document.querySelector('.cubby-preview'), null)
+})
+
+// --- draw --------------------------------------------------------------------
+
+const DRAW_SCRIPTS = ['core.js', 'draw.js']
+
+/** A rooms stub that records what was emitted and lets a test inject peers. */
+function drawRoom() {
+  const handlers = new Map()
+  const api = {
+    id: 'test/draw',
+    emitted: [],
+    states: [],
+    users: [{ user: { id: 'me' } }],
+    on(event, fn) {
+      if (!handlers.has(event)) handlers.set(event, new Set())
+      handlers.get(event).add(fn)
+    },
+    async emit(event, payload) {
+      api.emitted.push({ event, payload })
+    },
+    async updateUserState(patch) {
+      api.states.push(patch)
+    },
+    async join() {},
+    async leave() {},
+    /** Deliver an inbound event the way the SSE subscription would. */
+    fire(event, ...args) {
+      for (const fn of handlers.get(event) || []) fn(...args)
+    },
+  }
+  return api
+}
+
+function mountDraw(opts = {}, { userId = 'me' } = {}) {
+  const room = drawRoom()
+  const p = page({
+    html: '<main id="anchor" style="width:1000px"></main>',
+    scripts: DRAW_SCRIPTS,
+    platform: {
+      _pb: {},
+      ready: Promise.resolve(),
+      identity: { user: userId ? { id: userId } : null },
+      fs: {},
+      rooms: { room: () => room },
+    },
+  })
+  // The anchor has no layout in jsdom, so pin a frame the coordinate maths
+  // can use: x is a fraction of this width, y is document px from this top.
+  const anchor = p.document.getElementById('anchor')
+  anchor.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 500 })
+  const handle = p.cubby.draw('#anchor', { segmentMs: 10_000, chip: true, ...opts })
+  return { p, room, handle, anchor }
+}
+
+const settle = () => new Promise((r) => setTimeout(r, 0))
+
+/** Hold the modifier, drag through a few points, release. */
+function scribble(p, points, { release = true, buttons = 1 } = {}) {
+  const win = p.window
+  const ev = (type, x, y, extra = {}) => {
+    const e = new win.Event(type, { bubbles: true, cancelable: true })
+    Object.assign(e, { pageX: x, pageY: y, altKey: true, buttons, ...extra })
+    win.dispatchEvent(e)
+    return e
+  }
+  ev('pointermove', points[0][0], points[0][1])
+  ev('pointerdown', points[0][0], points[0][1])
+  for (const [x, y] of points.slice(1)) ev('pointermove', x, y)
+  if (release) ev('pointerup', points.at(-1)[0], points.at(-1)[1])
+  return ev
+}
+
+await test('draw mounts silently and shows no remote cursors by default', async () => {
+  const { p, room } = mountDraw()
+  await settle()
+  assert.deepEqual(p.errors, [])
+  assert.ok(p.document.querySelector('svg.cubby-draw-marks'))
+  assert.ok(p.document.querySelector('.cubby-draw-cursors'))
+  // cursors: false by default -- every remote cursor sample is a presence
+  // write and an SSE fan-out, so it has to be asked for.
+  assert.equal(room.states.length, 0, 'no cursor state written without opting in')
+})
+
+await test('holding the modifier shows the local puck even with no peers', async () => {
+  const { p } = mountDraw()
+  await settle()
+  const e = new p.window.Event('pointermove', { bubbles: true })
+  Object.assign(e, { pageX: 100, pageY: 50, altKey: true, buttons: 0 })
+  p.window.dispatchEvent(e)
+
+  const puck = p.document.querySelector('.cubby-draw-puck')
+  assert.ok(puck, 'the local puck is always available, shared or not')
+  assert.equal(puck.getAttribute('data-self'), '', 'and never eases -- it is your own pointer')
+  assert.equal(p.document.body.classList.contains('cubby-draw-held'), true, 'native cursor hidden')
+})
+
+await test('a stroke renders locally and emits exactly one event on release', async () => {
+  const { p, room } = mountDraw()
+  await settle()
+  scribble(p, [[100, 40], [200, 80], [300, 40], [400, 90]])
+
+  const path = p.document.querySelector('path.cubby-draw-path')
+  assert.ok(path, 'rendered from our own pointer, not from the echo')
+  assert.ok(path.getAttribute('d').startsWith('M'), 'and it has real geometry')
+
+  assert.equal(room.emitted.length, 1, 'one whole path, not one event per point')
+  const { event, payload } = room.emitted[0]
+  assert.equal(event, 'draw.mark')
+  assert.ok(payload.p.length >= 2)
+  assert.equal(typeof payload.ms, 'number', 'carries its duration so replay eases at the real speed')
+  assert.equal(payload.s, 1, 'session ordinal')
+  assert.equal(payload.k, 1, 'stroke ordinal')
+})
+
+await test('coordinates are anchor-relative, not raw page pixels', async () => {
+  const { p, room } = mountDraw()
+  await settle()
+  scribble(p, [[0, 40], [500, 40], [1000, 40]])
+  const { p: pts } = room.emitted[0].payload
+  // x is a fraction of the anchor's 1000px width; y is document pixels.
+  same(pts[0], [0, 40])
+  same(pts.at(-1), [1, 40])
+})
+
+await test('a long stroke flushes time-boxed segments that stitch together', async () => {
+  const { p, room } = mountDraw({ segmentMs: 20 })
+  await settle()
+  const ev = scribble(p, [[100, 40], [200, 80]], { release: false })
+  await new Promise((r) => setTimeout(r, 40))
+  assert.equal(room.emitted.length, 1, 'flushed mid-stroke without waiting for release')
+
+  ev('pointermove', 300, 120)
+  ev('pointermove', 400, 160)
+  ev('pointerup', 400, 160)
+  assert.ok(room.emitted.length >= 2, 'and again on release')
+
+  const [first, second] = room.emitted
+  // The last point of a segment is carried into the next so the two join.
+  same(second.payload.p[0], JSON.parse(JSON.stringify(first.payload.p.at(-1))))
+  assert.equal(second.payload.q, first.payload.q + 1, 'sequence continues')
+})
+
+await test('inbound marks from a peer render; our own echo is dropped', async () => {
+  const { p, room } = mountDraw()
+  await settle()
+  const count = () => p.document.querySelectorAll('path.cubby-draw-path').length
+
+  // cubby.rooms echoes every emit back to its sender. Rendering the echo as
+  // well as our own pointer would double every local stroke.
+  room.fire('draw.mark', { s: 1, k: 1, q: 0, p: [[0.1, 10], [0.2, 20]], ms: 50 }, { id: 'me' })
+  assert.equal(count(), 0, 'our own echo must never be rendered')
+
+  room.fire('draw.mark', { s: 1, k: 1, q: 0, p: [[0.3, 30], [0.4, 40]], ms: 50 }, { id: 'peer' })
+  assert.equal(count(), 1, "but a peer's mark is")
+})
+
+await test('marks arriving before our identity is known are dropped', async () => {
+  // Until our own id is known we cannot tell our echo from anyone else's, so
+  // everything before that point has to go.
+  const { p, room } = mountDraw({}, { userId: null })
+  await settle()
+  room.fire('draw.mark', { s: 1, k: 1, q: 0, p: [[0.1, 10], [0.2, 20]], ms: 50 }, { id: 'peer' })
+  assert.equal(p.document.querySelectorAll('path.cubby-draw-path').length, 0)
+})
+
+await test("a peer's whole hold fades as one group, not stroke by stroke", async () => {
+  const { p, room } = mountDraw()
+  await settle()
+  // Two strokes inside one modifier-hold (same session ordinal).
+  room.fire('draw.mark', { s: 4, k: 1, q: 0, p: [[0.1, 10], [0.2, 20]], ms: 10 }, { id: 'peer' })
+  room.fire('draw.mark', { s: 4, k: 2, q: 0, p: [[0.3, 30], [0.4, 40]], ms: 10 }, { id: 'peer' })
+  assert.equal(p.document.querySelectorAll('path.cubby-draw-path').length, 1, 'one group')
+
+  room.fire('draw.mark', { s: 5, k: 1, q: 0, p: [[0.5, 50], [0.6, 60]], ms: 10 }, { id: 'peer' })
+  assert.equal(p.document.querySelectorAll('path.cubby-draw-path').length, 2, 'a new hold is a new group')
+})
+
+await test('marks fade and are removed; nothing can freeze on the page', async () => {
+  const { p, room } = mountDraw({ fadeMs: 15 })
+  await settle()
+  room.fire('draw.mark', { s: 1, k: 1, q: 0, p: [[0.1, 10], [0.2, 20]], ms: 1 }, { id: 'peer' })
+  assert.equal(p.document.querySelectorAll('path.cubby-draw-path').length, 1)
+
+  // The fade timer is refreshed by activity rather than started by an end
+  // event, so a lost final segment cannot strand a mark forever.
+  await new Promise((r) => setTimeout(r, 90))
+  assert.equal(p.document.querySelectorAll('path.cubby-draw-path').length, 0)
+})
+
+await test('all four resets exit, and each one flushes the stroke in flight', async () => {
+  const cases = [
+    ['keyup', (p) => p.window.dispatchEvent(new p.window.Event('keyup', { bubbles: true }))],
+    ['blur', (p) => p.window.dispatchEvent(new p.window.Event('blur'))],
+    [
+      'visibilitychange',
+      (p) => {
+        Object.defineProperty(p.document, 'hidden', { value: true, configurable: true })
+        p.document.dispatchEvent(new p.window.Event('visibilitychange', { bubbles: true }))
+      },
+    ],
+    [
+      'pointermove with the modifier up',
+      (p) => {
+        const e = new p.window.Event('pointermove', { bubbles: true })
+        Object.assign(e, { pageX: 500, pageY: 90, altKey: false, buttons: 0 })
+        p.window.dispatchEvent(e)
+      },
+    ],
+  ]
+  for (const [name, reset] of cases) {
+    const { p, room } = mountDraw({ segmentMs: 10_000 })
+    await settle()
+    scribble(p, [[100, 40], [200, 80], [300, 40]], { release: false })
+    assert.equal(room.emitted.length, 0, `${name}: nothing flushed yet`)
+
+    reset(p)
+    // The modifier's keyup is not reliable -- Alt-Tab, blur, tab switch and
+    // OS-level grabs all swallow it, and a latched modifier silently eats
+    // every later click on the host page.
+    assert.equal(p.document.body.classList.contains('cubby-draw-held'), false, `${name}: unlatched`)
+    assert.equal(room.emitted.length, 1, `${name}: flushed the stroke in flight`)
+    assert.equal(p.document.querySelector('.cubby-draw-puck'), null, `${name}: puck dropped`)
+  }
+})
+
+await test('a pointermove with buttons === 0 ends the stroke rather than latching', async () => {
+  const { p, room } = mountDraw({ segmentMs: 10_000 })
+  await settle()
+  const ev = scribble(p, [[100, 40], [200, 80]], { release: false })
+  // A pointerdown with no matching pointerup -- pointer leaving the window
+  // mid-drag, a dropped capture, a synthetic event -- would otherwise latch
+  // drag mode and pan every later move into the drawing.
+  ev('pointermove', 300, 120, { buttons: 0 })
+  assert.equal(room.emitted.length, 1, 'the stroke was ended, not continued')
+})
+
+await test('the modifier keydown is never preventDefault-ed', async () => {
+  const { p } = mountDraw()
+  await settle()
+  const e = new p.window.Event('keydown', { bubbles: true, cancelable: true })
+  Object.assign(e, { key: 'Alt', altKey: true })
+  p.window.dispatchEvent(e)
+  // Alt+arrow is text navigation, Alt+letter is how special characters are
+  // typed, and screen readers use it as a modifier.
+  assert.equal(e.defaultPrevented, false)
+})
+
+await test('a modifier-click is swallowed so it cannot follow a link or pan a diagram', async () => {
+  const { p } = mountDraw()
+  await settle()
+  const click = new p.window.Event('click', { bubbles: true, cancelable: true })
+  Object.assign(click, { altKey: true })
+  p.window.dispatchEvent(click)
+  assert.equal(click.defaultPrevented, true)
+})
+
+await test('marks sit below a sticky bar and cursors above it', () => {
+  const { p } = mountDraw()
+  const css = [...p.document.head.querySelectorAll('style[data-cubby-draw]')]
+    .map((s) => s.textContent)
+    .join('')
+  const z = (cls) => Number(css.match(new RegExp(`\\.${cls}\\s*\\{\\s*z-index:\\s*(\\d+)`))?.[1])
+  // A mark drawn near the top should slide UNDER the bar like the content it
+  // was drawn on; a peer pointing AT a nav link is the one case the puck wins.
+  assert.ok(z('cubby-draw-marks') < 40, 'marks below the nav bar')
+  assert.ok(z('cubby-draw-cursors') > 40, 'cursors above it')
+  // Both overlays cover the page and would otherwise eat every click on it.
+  assert.match(css, /pointer-events:\s*none/)
+})
+
+await test('the presence chip never claims what it has not established', async () => {
+  const { p, room } = mountDraw({}, { userId: null })
+  const said = () => p.document.querySelector('.cubby-draw-said').textContent
+  // Signed out: a hint, and no count. "Just you" is a claim.
+  await settle()
+  assert.match(said(), /Hold/)
+  assert.doesNotMatch(said(), /Just you/)
+
+  const joined = mountDraw()
+  await settle()
+  assert.match(joined.p.document.querySelector('.cubby-draw-said').textContent, /Just you/)
+
+  joined.room.users = [{ user: { id: 'me' } }, { user: { id: 'peer' } }]
+  joined.room.fire('room.sync')
+  assert.match(joined.p.document.querySelector('.cubby-draw-said').textContent, /1 other here/)
+})
+
+await test('opting in to shared cursors starts writing presence state', async () => {
+  const { p, room } = mountDraw({ cursors: true, cursorMs: 0 })
+  await settle()
+  const e = new p.window.Event('pointermove', { bubbles: true })
+  Object.assign(e, { pageX: 250, pageY: 60, altKey: true, buttons: 0 })
+  p.window.dispatchEvent(e)
+  assert.ok(room.states.length >= 1, 'now it broadcasts')
+  same(room.states[0].at, [0.25, 60], 'anchor-relative, like the marks')
+})
+
+await test('draw.destroy unlatches, leaves the room and removes both layers', async () => {
+  const { p, handle } = mountDraw()
+  await settle()
+  scribble(p, [[100, 40], [200, 80]], { release: false })
+  handle.destroy()
+
+  assert.equal(p.document.body.classList.contains('cubby-draw-held'), false, 'never leave it latched')
+  assert.equal(p.document.querySelector('.cubby-draw-marks'), null)
+  assert.equal(p.document.querySelector('.cubby-draw-cursors'), null)
+  assert.equal(p.document.querySelector('.cubby-draw-chip'), null)
 })
 
 // --- style injection --------------------------------------------------------

@@ -270,3 +270,50 @@ the cache coherence the previous decision bought. A missing hard dependency
 logs once and attaches nothing; a missing platform is silent, because a page
 deliberately serving markdown with no backend is a supported configuration,
 not a failure.
+
+## Shared drawing sends whole paths, not streams of points
+
+The obvious way to build shared scribbling is to throttle the pointer at ~50ms
+and broadcast each position. On cubby that is unaffordable: rooms.emit()
+creates a rooms_events row per call, so one person drawing is ~20 rows/sec
+against a sweeper that deletes a fixed BATCH per minute. At the old BATCH of
+200 that was ~3/sec, so a single ten-second scribble consumed a whole minute of
+capacity and two simultaneous drawers grew the table without bound. The feature
+was deferred on those grounds.
+
+The transport that works is to capture the stroke locally as a vector, simplify
+it, and send whole paths. Flushing on a ~800ms timer as well as on release
+keeps a peer's latency bounded by the segment rather than by however long
+someone keeps drawing, and each segment carries its duration so the receiver
+replays it at the speed it was drawn -- so it still looks live. That is roughly
+1 event/sec per drawer instead of 20. BATCH went to 1000 (~16/sec, a dozen
+simultaneous drawers) and EVENTS_TTL_MS to 2 minutes, since nothing ever reads
+an event back.
+
+The transport change deletes three of the hardest bugs in this kind of feature
+rather than merely making it cheaper. With one self-contained event per
+segment there is no stroke-end broadcast, so there is no session ordinal to
+reconcile against late points, no retired-sessions set, and no way for a point
+to arrive after its own end and strand a mark on the page. The fade timer is
+refreshed by activity instead of started by an end event, which means a lost
+final segment cannot freeze a mark -- the failure the end broadcast existed to
+prevent, arriving by the back door.
+
+What survives unchanged is everything about local input, which is where the
+difficulty really lives: render your own marks from your own pointer and drop
+every inbound event whose sender is you (cubby echoes, and everything arriving
+before your own id is known must go too, because until then you cannot tell
+yours from anyone's); four resets funnelling into one idempotent exit, because
+the modifier's keyup is swallowed by Alt-Tab, blur, tab switch and OS-level
+grabs, and a latched modifier eats every later click on the page; buttons === 0
+to bail out of a latched drag; and never preventDefault-ing the modifier keydown,
+because Alt+arrow is text navigation and screen readers use it as a modifier.
+
+Broadcasting your own cursor to peers is off by default. The local puck is
+free, but every remote cursor sample is a presence write plus an SSE fan-out
+with none of the batching that makes strokes cheap. Marks are the feature.
+
+This does not fully honour the "no persistence of any kind" principle the
+design started from: a row exists until the sweeper takes it. It honours the
+purpose -- clients subscribe to create only and never read history, so a late
+joiner sees nothing and a refresh clears the page.

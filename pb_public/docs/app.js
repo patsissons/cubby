@@ -1,5 +1,5 @@
-// Docs app: the sticky site bar, copy buttons on code blocks, and a live
-// footer that proves the page is itself a cubby app.
+// Docs app: the sticky site bar, shared scribbling, copy buttons on code
+// blocks, and a live footer that proves the page is itself a cubby app.
 /* global cubby */
 
 // The sticky site bar. Row two is derived from the DOM: each <section> carries
@@ -16,6 +16,14 @@ function wireNav() {
       { href: '/hello/', label: 'Hello' },
     ],
   })
+}
+
+// Ephemeral shared marks: hold Alt and the pointer becomes a puck, hold and
+// drag and you scribble on the page. Signed-in visitors see each other's
+// marks; everyone else gets a private highlighter. Nothing is persisted.
+function wireDraw() {
+  if (!cubby.draw) return
+  cubby.draw('main', { room: '_root/draw-docs' })
 }
 
 // Copy buttons on every code block.
@@ -60,5 +68,6 @@ async function wireLive() {
 }
 
 wireNav()
+wireDraw()
 wireCopyButtons()
 wireLive().catch((err) => console.warn(err))

@@ -19,6 +19,7 @@ const core = await import('../pb_public/js/core.esm.js')
 const markdown = await import('../pb_public/js/markdown.esm.js')
 const platform = await import('../pb_public/js/platform.esm.js')
 const preview = await import('../pb_public/js/preview.esm.js')
+const draw = await import('../pb_public/js/draw.esm.js')
 
 let passed = 0
 async function test(name, fn) {
@@ -337,6 +338,69 @@ await test('allowlist matching ignores case and stray whitespace', () => {
 await test('resolveUrl refuses garbage without throwing', () => {
   assert.equal(preview.resolveUrl('http://[', 'https://cubby.test'), null)
   assert.ok(preview.resolveUrl('/x', 'https://cubby.test') instanceof URL)
+})
+
+// --- draw: path simplification ----------------------------------------------
+//
+// This is what makes one-event-per-segment affordable. Pointer input arrives at
+// 60-120Hz and almost all of it is noise; if simplification under-cuts, the
+// payload grows, and if it over-cuts, the stroke changes shape.
+
+await test('simplify keeps the shape and drops the noise', () => {
+  // A straight run of collinear points must collapse to its endpoints.
+  const line = Array.from({ length: 50 }, (_, i) => [i / 49, i * 2])
+  assert.deepEqual(draw.simplify(line, 0.001), [line[0], line[49]])
+
+  // A corner must survive: the vertex carries the shape.
+  const corner = [[0, 0], [0.25, 0], [0.5, 0], [0.5, 50], [0.5, 100]]
+  const kept = draw.simplify(corner, 0.001)
+  assert.equal(kept.length, 3, 'start, vertex, end')
+  assert.deepEqual(kept[1], [0.5, 0], 'and the vertex is the corner itself')
+})
+
+await test('simplify leaves short paths and junk alone', () => {
+  assert.deepEqual(draw.simplify([], 0.01), [])
+  assert.deepEqual(draw.simplify([[0, 0]], 0.01), [[0, 0]])
+  assert.deepEqual(draw.simplify([[0, 0], [1, 1]], 0.01), [[0, 0], [1, 1]])
+  assert.deepEqual(draw.simplify(null, 0.01), [])
+})
+
+await test('simplify terminates on a long pathological path', () => {
+  // Iterative, not recursive: a few thousand points must not blow the stack.
+  const zigzag = Array.from({ length: 5000 }, (_, i) => [i / 5000, i % 2 ? 0 : 40])
+  const out = draw.simplify(zigzag, 0.0001)
+  assert.ok(out.length > 2 && out.length <= 5000)
+  assert.deepEqual(out[0], zigzag[0])
+  assert.deepEqual(out.at(-1), zigzag.at(-1))
+})
+
+await test('packPoints rounds for the wire without moving the stroke', () => {
+  const packed = draw.packPoints([[0.1234567, 10.7], [0.9999, 200.2]], { tolerance: 0 })
+  // x is a fraction of the anchor width, so 3dp is sub-pixel on any real
+  // screen; y is document pixels, so whole numbers are exact.
+  assert.deepEqual(packed, [[0.123, 11], [1, 200]])
+})
+
+await test('packPoints caps a pathological path by decimating, not truncating', () => {
+  // Losing the END of a stroke is far more visible than losing detail along it.
+  const noisy = Array.from({ length: 4000 }, (_, i) => [i / 4000, (i % 7) * 30])
+  const packed = draw.packPoints(noisy, { tolerance: 0, max: 100 })
+  assert.equal(packed.length, 100)
+  assert.deepEqual(packed[0], [0, 0], 'the first point survives')
+  assert.deepEqual(packed.at(-1), [draw.packPoints([noisy.at(-1)])[0][0], (3999 % 7) * 30], 'and so does the last')
+})
+
+await test('a realistic one-second segment fits comfortably in the payload field', () => {
+  // 120Hz of jittery pointer input along a gentle arc.
+  const raw = Array.from({ length: 120 }, (_, i) => {
+    const t = i / 119
+    return [t * 0.6, Math.round(200 + Math.sin(t * Math.PI) * 120 + (i % 3) - 1)]
+  })
+  const packed = draw.packPoints(raw)
+  const bytes = JSON.stringify(packed).length
+  assert.ok(packed.length < raw.length, `simplified ${raw.length} -> ${packed.length}`)
+  // rooms_events.payload is a json field with maxSize 100000.
+  assert.ok(bytes < 4000, `${bytes} bytes is far inside the 100KB payload cap`)
 })
 
 // --- widget lifecycle -------------------------------------------------------

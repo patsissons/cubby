@@ -226,6 +226,73 @@ signed-out pastes error with `auth_required` and insert nothing. Image
 types: png/jpeg/gif/webp (SVG is excluded: PocketBase serves files with
 their declared content type, and SVG can script on the instance origin).
 
+## Draw: cubby.draw (opt-in)
+
+Ephemeral shared cursors and freehand marks. Needs core; uses `cubby.rooms`
+when the platform is present and degrades to a private highlighter when it is
+not.
+
+```html
+<script src="/js/core.js" defer></script>
+<script src="/js/platform.js" defer></script>
+<script src="/js/draw.js" defer></script>
+```
+
+```js
+cubby.draw('main', {
+  room: 'draw/page',     // default: one room per page, so pages do not share marks
+  modifier: 'alt',       // alt | ctrl | meta | shift
+  cursors: false,        // broadcast your pointer to peers (see below)
+  segmentMs: 800,        // how often an in-progress stroke is flushed
+  fadeMs: 5000, strokeWidth: 3, opacity: 0.42,
+})
+```
+
+Hold the modifier and your pointer becomes a puck; hold and drag and you draw
+a translucent line; release and the marks fade. **The local puck always shows**
+— it costs nothing and works with no backend at all. **Broadcasting your cursor
+to peers is off by default**, because every cursor sample is a presence write
+and an SSE fan-out; marks are the feature, a live puck is the garnish.
+
+### Whole paths, not point streams
+
+A stroke is captured locally as a vector, simplified, and sent as **one event
+per time-boxed segment** rather than as a stream of points. `cubby.rooms.emit()`
+writes a database row per call, so the 50 ms point stream this feature is
+usually built on would be ~20 rows/sec per drawer against a sweeper that clears
+~16/sec. One path per ~800 ms is roughly 1/sec — about 16× less traffic, and it
+is what makes the feature affordable on a durable event log at all.
+
+Segments are flushed on a timer as well as on release, so a peer's latency is
+bounded by `segmentMs` rather than by however long you keep drawing; each
+carries its own duration so the receiver can replay it at the speed it was
+drawn. Segments stitch by repeating their predecessor's last point.
+
+Because a segment is self-contained there is **no stroke-end broadcast**, and
+so none of the machinery one would need: no session ordinal to reconcile, no
+retired set, no way for a point to arrive after its own end. A group's fade
+timer is refreshed by activity rather than started by an end event, so a mark
+cannot freeze on the page even if the last segment is lost.
+
+### What is and is not persisted
+
+`cubby.rooms` only ever subscribes to `create` and never reads event history,
+so a late joiner sees nothing and a refresh clears the page. A row does exist
+until the sweeper's `EVENTS_TTL_MS` (2 minutes) — the one place this departs
+from "no persistence of any kind" — but it is never read after its realtime
+moment.
+
+Coordinates are anchor-relative: `x` as a fraction of the anchor's width, `y`
+in document pixels from its top. Raw page coordinates misalign for the
+commonest case there is — two people on wide monitors whose layout is identical
+because the container is capped, differing only in left margin. What anchoring
+cannot fix is reflow: below the cap, text wraps differently, so the same `y` is
+a different line.
+
+Marks render below a sticky nav and cursors above it. Sharing requires sign-in
+(`emit` and `join` both do); signed-out visitors get a private highlighter and
+the chip says so rather than claiming otherwise.
+
 ## Preview: cubby.preview (opt-in)
 
 Hover a link, see the page. Core only — no backend.
