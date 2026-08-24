@@ -460,6 +460,15 @@ resize; the two global rules it leaks (`scroll-margin-top` on ids and
 `:target`, and smooth scrolling under `prefers-reduced-motion: no-preference`)
 read that property, so they cannot disagree with the bar's real height.
 
+When the active section changes, its pill is scrolled into view inside row two
+— only when it is actually outside, never recentred, since sliding the row a
+little at every section boundary is more distracting than an occasional jump.
+It sets `scrollLeft` on that one container rather than calling
+`scrollIntoView`, which walks every scrollable ancestor and can move the page
+itself: the one thing a nav bar must never do to someone mid-scroll. The target
+is clamped into the container's real range, so the first pill does not ask to
+scroll to a negative offset and the last does not overshoot.
+
 The bar is `position: fixed`, **not sticky**. Sticky only sticks while its
 containing block is in view, and the mount point is a bare element exactly the
 bar's height — so it scrolled out of view immediately and took the bar with it.

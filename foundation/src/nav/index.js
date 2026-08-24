@@ -112,11 +112,57 @@ export function createNav() {
         .filter(Boolean)
     }
 
+    /**
+     * Bring a pill into view inside its own scrolling row.
+     *
+     * Only when it is actually outside -- "nearest" semantics, not "centre".
+     * Recentring on every activation would slide the whole row a little on each
+     * section boundary, which is far more distracting than the occasional jump.
+     *
+     * Deliberately NOT scrollIntoView: that walks every scrollable ancestor and
+     * can move the page itself, which is exactly what a nav bar must never do
+     * to someone who is mid-scroll. Setting scrollLeft on the one container
+     * cannot escape it. Offsets come from getBoundingClientRect rather than
+     * offsetLeft, which would be measured against whatever the offsetParent
+     * happens to be.
+     */
+    function revealPill(el, container) {
+      if (!el || !container) return
+      const box = container.getBoundingClientRect()
+      // No layout yet (or a hidden bar): nothing sensible to compute.
+      if (!box.width) return
+      const pill = el.getBoundingClientRect()
+      const pad = 16
+      let delta = 0
+      if (pill.left < box.left + pad) delta = pill.left - box.left - pad
+      else if (pill.right > box.right - pad) delta = pill.right - box.right + pad
+      if (!delta) return
+
+      // Clamp into the container's real scroll range, then bail if that lands
+      // where we already are. Without the lower clamp the FIRST pill -- flush
+      // against the left edge, and so "within pad of it" -- asks to scroll to
+      // -16 every time it activates. Browsers clamp that to 0, which is why it
+      // is invisible rather than harmless.
+      const max = Math.max(0, container.scrollWidth - container.clientWidth)
+      const target = Math.max(0, Math.min(container.scrollLeft + delta, max || Infinity))
+      if (target === container.scrollLeft) return
+
+      const reduced = win.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      if (typeof container.scrollTo === 'function') {
+        container.scrollTo({ left: target, behavior: reduced ? 'auto' : 'smooth' })
+      } else {
+        container.scrollLeft = target
+      }
+    }
+
     function setActive(id) {
       if (id === active) return
       if (active) pills.get(active)?.removeAttribute('aria-current')
       active = id
-      pills.get(id)?.setAttribute('aria-current', 'true')
+      const pill = pills.get(id)
+      pill?.setAttribute('aria-current', 'true')
+      // The highlight is worthless if it is scrolled off the end of the row.
+      revealPill(pill, sectionScroll)
     }
 
     /** Rebuild row two. Call after rendering sections with JS. */
@@ -184,6 +230,9 @@ export function createNav() {
     }
 
     refresh()
+    // The current page can be off the end of row one too, for a site with more
+    // pages than fit. Once at mount is enough: row one never changes.
+    revealPill(pageScroll.querySelector('[aria-current]'), pageScroll)
     ctx.on(win, 'resize', () => {
       measure()
       // The observer's rootMargin is baked in at construction, so a height

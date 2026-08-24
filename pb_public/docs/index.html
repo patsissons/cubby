@@ -20,7 +20,7 @@
     <link rel="stylesheet" href="style.css?v=58c7208f" />
     <script src="/js/core.js?v=f32adb29" defer></script>
     <script src="/js/platform.js?v=b1f620e0" defer></script>
-    <script src="/js/nav.js?v=6b78d76d" defer></script>
+    <script src="/js/nav.js?v=a6447581" defer></script>
     <script src="/js/draw.js?v=4890fa2b" defer></script>
     <script src="/js/graph.js?v=4a9d4a16" defer></script>
     <script src="/js/preview.js?v=e3d8c254" defer></script>
@@ -395,6 +395,12 @@ bar.destroy()</code></pre>
             merely unlikely. <code>data-nav-label</code> overrides a heading too long for a bar, and
             sections marked <code>hidden</code> are skipped — an entry that scrolls nowhere and
             never highlights reads as broken.
+          </p>
+          <p>
+            When the active section changes, its pill scrolls into view inside row two —
+            only when it is actually off the end, and by setting <code>scrollLeft</code> on
+            that one container rather than calling <code>scrollIntoView</code>, which walks
+            every scrollable ancestor and can move the page itself.
           </p>
           <p>
             The bar is <code>position: fixed</code> and reserves its own height on its mount

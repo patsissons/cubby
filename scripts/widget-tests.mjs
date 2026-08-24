@@ -307,6 +307,114 @@ await test('a fixed bar reserves its own height at the mount point', () => {
   assert.equal(mount.style.height, '', 'and the host gets its layout back')
 })
 
+/**
+ * jsdom has no layout and no scrolling, so give the pill row a geometry and
+ * record what the widget asks for. That is the right level anyway: what
+ * matters is that it requests the correct scroll offset, not that a fake
+ * engine applies it.
+ */
+function navWithGeometry({ rowLeft = 0, rowRight = 300, pills = {} } = {}) {
+  const p = page({ html: NAV_PAGE, scripts: NAV_SCRIPTS })
+  const asked = []
+  const rect = (left, right) => ({ left, right, width: right - left, top: 0, bottom: 40, height: 40, x: left, y: 0 })
+
+  const real = p.window.Element.prototype.getBoundingClientRect
+  p.window.Element.prototype.getBoundingClientRect = function () {
+    if (this.classList?.contains('cubby-nav-scroll')) return rect(rowLeft, rowRight)
+    const href = this.getAttribute?.('href')
+    if (href && pills[href]) return rect(...pills[href])
+    return real.call(this)
+  }
+  p.window.Element.prototype.scrollTo = function (opts) {
+    asked.push({ el: this, ...opts })
+    this.scrollLeft = opts.left
+  }
+
+  const bar = p.cubby.nav('#bar', {})
+  const row = p.document.querySelector('.cubby-nav-sections .cubby-nav-scroll')
+  const observer = p.window.__observers.at(-1)
+  const activate = (id) => observer.fire([{ target: p.document.querySelector(`[aria-labelledby="${id}"]`), isIntersecting: true }])
+  return { p, bar, row, asked, activate }
+}
+
+await test('the active pill is scrolled into view when it is off the end of the row', () => {
+  // #long sits past the right edge of a 300px row.
+  const { row, asked, activate, p } = navWithGeometry({
+    rowLeft: 0,
+    rowRight: 300,
+    pills: { '#intro': [0, 80], '#usage': [80, 160], '#long': [420, 500] },
+  })
+  activate('long')
+
+  assert.equal(asked.length, 1, 'exactly one scroll request')
+  assert.equal(asked[0].el, row, 'and only the pill row moves -- never the page')
+  // right edge 500 must land at 300 - 16 of padding => scroll by 216
+  assert.equal(asked[0].left, 216)
+  assert.equal(asked[0].behavior, 'smooth')
+  assert.equal(
+    p.document.querySelector('.cubby-nav-sections [aria-current]').getAttribute('href'),
+    '#long'
+  )
+})
+
+await test('a pill already in view does not move the row', () => {
+  const { asked, activate } = navWithGeometry({
+    rowLeft: 0,
+    rowRight: 300,
+    pills: { '#intro': [0, 80], '#usage': [80, 160], '#long': [160, 240] },
+  })
+  activate('usage')
+  // Recentring on every activation would slide the row a little at each
+  // section boundary, which is worse than the occasional jump.
+  assert.deepEqual(asked, [])
+})
+
+await test('the first pill never asks to scroll to a negative offset', () => {
+  // It sits flush against the left edge, so it is always "within pad of it".
+  // Browsers clamp a negative scrollLeft to 0, which is exactly why this was
+  // invisible rather than harmless.
+  const { asked, activate } = navWithGeometry({
+    rowLeft: 0,
+    rowRight: 300,
+    pills: { '#intro': [0, 80], '#usage': [80, 160], '#long': [160, 240] },
+  })
+  activate('intro')
+  assert.deepEqual(asked, [], 'already at the start: nothing to do')
+})
+
+await test('a pill off the LEFT edge scrolls back too', () => {
+  const { row, asked, activate } = navWithGeometry({
+    rowLeft: 100,
+    rowRight: 400,
+    pills: { '#intro': [-60, 20], '#usage': [120, 200], '#long': [200, 280] },
+  })
+  // A pill sitting at viewport -60 while the row starts at 100 means the row
+  // is already scrolled right; say so, or the geometry is incoherent and the
+  // clamp rightly refuses to scroll past the start.
+  row.scrollLeft = 300
+  activate('intro')
+  assert.equal(asked.length, 1)
+  // left edge -60 must land at 100 + 16 => scroll back by 176
+  assert.equal(asked[0].left, 124)
+})
+
+await test('reduced motion gets an instant scroll, not a smooth one', () => {
+  const p = page({ html: NAV_PAGE, scripts: NAV_SCRIPTS })
+  const asked = []
+  p.window.matchMedia = (q) => ({ matches: q.includes('reduce'), addEventListener() {}, removeEventListener() {} })
+  const real = p.window.Element.prototype.getBoundingClientRect
+  p.window.Element.prototype.getBoundingClientRect = function () {
+    if (this.classList?.contains('cubby-nav-scroll')) return { left: 0, right: 300, width: 300, top: 0, bottom: 40, height: 40 }
+    if (this.getAttribute?.('href') === '#long') return { left: 420, right: 500, width: 80, top: 0, bottom: 40, height: 40 }
+    return real.call(this)
+  }
+  p.window.Element.prototype.scrollTo = function (opts) { asked.push(opts) }
+
+  p.cubby.nav('#bar', {})
+  p.window.__observers.at(-1).fire([{ target: p.document.querySelector('[aria-labelledby="long"]'), isIntersecting: true }])
+  assert.equal(asked[0].behavior, 'auto')
+})
+
 await test('nav publishes its measured height as a custom property', () => {
   const { p, nav } = mountNav()
   const prop = p.document.documentElement.style.getPropertyValue('--cubby-nav-height')
