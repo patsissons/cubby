@@ -9,6 +9,11 @@
 //   editor.js     textarea + preview + paste upload           (needs markdown)
 //   foundation.js DEPRECATED all-in-one core+platform, kept for cached pages
 //
+// NOTE: `npm run dev` holds esbuild watch contexts built from THIS file as it
+// was when the server started. After editing the builds array or a resolver,
+// restart the dev server -- a stale watcher writes stale artifacts over a fresh
+// `npm run build`, and the only thing that catches it is the CI drift gate.
+//
 // An ESM twin ships only where a Node test or the smoke suite imports it.
 // Widgets that are pure DOM get an IIFE build alone until a pure function in
 // them earns a test.
