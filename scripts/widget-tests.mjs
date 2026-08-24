@@ -825,6 +825,34 @@ await test('holding the modifier shows the local puck even with no peers', async
   assert.equal(p.document.body.classList.contains('cubby-draw-held'), true, 'native cursor hidden')
 })
 
+await test('the marks layer is sized to the document, not left at zero height', async () => {
+  const { p } = mountDraw()
+  await settle()
+  const marks = p.document.querySelector('svg.cubby-draw-marks')
+  const cursors = p.document.querySelector('.cubby-draw-cursors')
+
+  // An outer <svg> establishes its own viewport and CLIPS to it, so at height 0
+  // every stroke was drawn correctly and then clipped away entirely -- the bug
+  // where the puck appeared and the line never did.
+  Object.defineProperty(p.window.document.documentElement, 'scrollHeight', { value: 4000, configurable: true })
+  p.window.dispatchEvent(new p.window.Event('resize'))
+  assert.equal(marks.style.height, '4000px', 'the svg must cover the document')
+
+  // The cursors layer is a <div>; its absolutely positioned children escape a
+  // zero height happily, so it needs no size of its own.
+  assert.equal(cursors.style.height, '')
+})
+
+await test('a drawn stroke has real geometry, not just a moveto', async () => {
+  const { p, room } = mountDraw()
+  await settle()
+  scribble(p, [[100, 40], [200, 80], [300, 40]])
+  const d = p.document.querySelector('path.cubby-draw-path').getAttribute('d')
+  // startsWith('M') alone is satisfied by a single point, which renders
+  // nothing at all -- assert the line segments too.
+  assert.match(d, /^M[\d.-]+ [\d.-]+(L[\d.-]+ [\d.-]+){2,}$/, `expected a polyline, got ${d}`)
+})
+
 await test('a stroke renders locally and emits exactly one event on release', async () => {
   const { p, room } = mountDraw()
   await settle()
@@ -841,6 +869,27 @@ await test('a stroke renders locally and emits exactly one event on release', as
   assert.equal(typeof payload.ms, 'number', 'carries its duration so replay eases at the real speed')
   assert.equal(payload.s, 1, 'session ordinal')
   assert.equal(payload.k, 1, 'stroke ordinal')
+})
+
+await test('two presses in one hold are separate subpaths, not one joined line', async () => {
+  const { p } = mountDraw()
+  await settle()
+  const win = p.window
+  const ev = (type, x, y, extra = {}) => {
+    const e = new win.Event(type, { bubbles: true, cancelable: true })
+    Object.assign(e, { pageX: x, pageY: y, altKey: true, buttons: 1, ...extra })
+    win.dispatchEvent(e)
+  }
+  ev('pointermove', 100, 40, { buttons: 0 })
+  ev('pointerdown', 100, 40); ev('pointermove', 200, 40); ev('pointerup', 200, 40)
+  ev('pointerdown', 600, 300); ev('pointermove', 700, 300); ev('pointerup', 700, 300)
+
+  const d = p.document.querySelector('path.cubby-draw-path').getAttribute('d')
+  // One hold is ONE group so it fades as a single thing -- but flattening the
+  // presses into one point list would draw a line from where you lifted to
+  // where you next pressed, straight across the page.
+  assert.equal((d.match(/M/g) || []).length, 2, `expected two subpaths, got ${d}`)
+  assert.match(d, /^M100 40L200 40M600 300L700 300$/)
 })
 
 await test('coordinates are anchor-relative, not raw page pixels', async () => {

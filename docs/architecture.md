@@ -358,7 +358,17 @@ because the container is capped, differing only in left margin. What anchoring
 cannot fix is reflow: below the cap, text wraps differently, so the same `y` is
 a different line.
 
-Marks render below a sticky nav and cursors above it. Sharing requires sign-in
+Marks render below a sticky nav and cursors above it. The marks layer is an
+`<svg>`, and an outer `<svg>` establishes its own viewport and clips to it —
+so unlike the cursors `<div>`, whose absolutely positioned children escape a
+zero height happily, it needs a real height covering the document. It is reset
+to zero before each measurement, because an absolutely positioned layer
+contributes to the scrollable overflow area and measuring it while tall means
+the document can only ever grow.
+
+One modifier-hold is one group, so a multi-stroke scribble fades as a single
+thing — but each press is its own subpath. Flattening them into one point list
+draws a line from where you lifted to where you next pressed. Sharing requires sign-in
 (`emit` and `join` both do); signed-out visitors get a private highlighter and
 the chip says so rather than claiming otherwise.
 

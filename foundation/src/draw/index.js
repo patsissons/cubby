@@ -81,6 +81,23 @@ export function createDraw(cubby) {
       marks.remove()
       cursors.remove()
     })
+    /**
+     * Give the marks layer a real height covering the document.
+     *
+     * Reset to zero before measuring: the layer is absolutely positioned, so it
+     * contributes to the scrollable overflow area, and measuring while it is
+     * already tall means the document can only ever grow.
+     */
+    function sizeMarks() {
+      marks.style.height = '0px'
+      const height = Math.max(
+        doc.documentElement?.scrollHeight || 0,
+        doc.body?.scrollHeight || 0
+      )
+      marks.style.height = `${height}px`
+    }
+
+    sizeMarks()
     doc.documentElement.style.setProperty('--cubby-draw-fade', `${fadeMs}ms`)
     ctx.own(() => doc.documentElement.style.removeProperty('--cubby-draw-fade'))
 
@@ -117,7 +134,11 @@ export function createDraw(cubby) {
       el.setAttribute('stroke', `hsl(${hue} 85% 45% / ${opacity})`)
       el.setAttribute('stroke-width', String(strokeWidth))
       marks.appendChild(el)
-      g = { el, points: [], timer: null }
+      // strokes, not points: one modifier-hold is ONE group so it fades as a
+      // single thing, but each press is its own subpath. Flattening them into
+      // one point list draws a line from where you lifted to where you next
+      // pressed.
+      g = { el, strokes: [], timer: null }
       groups.set(key, g)
       return g
     }
@@ -156,17 +177,36 @@ export function createDraw(cubby) {
      *   than drawing a zero-length join that blobs at a round line cap. Never
      *   true for a locally captured point, which would drop the point itself.
      */
-    function appendPoints(key, hue, points, stitch = false) {
+    /** Every subpath of a group, joined -- one M per press. */
+    function paint(g) {
+      g.el.setAttribute('d', g.strokes.map((stroke) => toPathData(stroke.map(toPage))).join(''))
+    }
+
+    /**
+     * @param {boolean} [opts.stitch] true for a received segment, whose first
+     *   point repeats the last point of its predecessor -- drop the duplicate
+     *   rather than drawing a zero-length join that blobs at a round line cap.
+     *   Never true for a locally captured point, which would drop the point.
+     * @param {boolean} [opts.newStroke] begin a new subpath rather than
+     *   continuing the last one.
+     */
+    function appendPoints(key, hue, points, { stitch = false, newStroke = false } = {}) {
+      // A stroke may run past what the layer covered when it was last sized --
+      // the page can have grown, or this is the first mark on it.
+      if (!marks.style.height || marks.style.height === '0px') sizeMarks()
       const g = groupFor(key, hue)
-      const start = stitch && g.points.length && points.length ? 1 : 0
-      for (let i = start; i < points.length; i++) g.points.push(points[i])
-      g.el.setAttribute('d', toPathData(g.points.map(toPage)))
+      if (newStroke || !g.strokes.length) g.strokes.push([])
+      const target = g.strokes[g.strokes.length - 1]
+      const start = stitch && target.length && points.length ? 1 : 0
+      for (let i = start; i < points.length; i++) target.push(points[i])
+      paint(g)
       return g
     }
 
     function reproject() {
+      sizeMarks()
       box = frame()
-      for (const g of groups.values()) g.el.setAttribute('d', toPathData(g.points.map(toPage)))
+      for (const g of groups.values()) paint(g)
       for (const [id, puck] of pucks) placePuck(puck, puck._at, id === myId)
     }
     ctx.on(win, 'resize', reproject)
@@ -340,10 +380,17 @@ export function createDraw(cubby) {
       )
 
       function beginStroke(e) {
+        sizeMarks()
         drawing = true
         stroke += 1
         seq = 0
-        buffer = [toAnchor(e.pageX, e.pageY)]
+        const at = toAnchor(e.pageX, e.pageY)
+        buffer = [at]
+        // Render the press point too. Without it the line starts one pointermove
+        // late, and a short stroke of two points renders as a bare moveto --
+        // which draws nothing at all.
+        appendPoints(selfKey(), hueFor(myId || 'me'), [at], { newStroke: true })
+        holdGroup(selfKey())
         segmentStart = Date.now()
         schedule()
       }
@@ -384,7 +431,10 @@ export function createDraw(cubby) {
         // Neither failure is visible in the environment where the other one is.
         if (!myId || !user || user.id === myId) return
         const key = `${user.id}|${payload.s}`
-        const group = appendPoints(key, hueFor(user.id), payload.p || [], true)
+        const group = appendPoints(key, hueFor(user.id), payload.p || [], {
+          stitch: true,
+          newStroke: payload.q === 0,
+        })
         animate(group, payload)
         // Refreshed by activity, so a lost final segment cannot freeze a mark.
         touchGroup(key, Math.min(payload.ms || 0, segmentMs * 2))

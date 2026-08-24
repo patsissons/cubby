@@ -5,11 +5,23 @@ export const STYLES = `
   top: 0;
   left: 0;
   width: 100%;
-  height: 0;
-  overflow: visible;
   /* Load-bearing: these overlays cover the page and would otherwise eat every
      click, hover and text selection on it. */
   pointer-events: none;
+}
+/* The cursors layer is a <div>: absolutely positioned children escape a zero
+   height happily, so it needs no size of its own. */
+.cubby-draw-cursors {
+  height: 0;
+  overflow: visible;
+}
+/* The marks layer is an <svg>, which is NOT the same. An outer svg establishes
+   its own viewport and clips to it, so at height 0 every stroke was drawn
+   correctly and then clipped away entirely -- the bug where the puck appeared
+   and the line never did. Its height is set from the document in JS; the
+   overflow rule stays only as a backstop. */
+.cubby-draw-marks {
+  overflow: visible;
 }
 /* Marks sit BELOW a sticky bar -- a mark drawn near the top should slide under
    it like the content it was drawn on, and painting over the bar makes the nav
