@@ -226,6 +226,52 @@ signed-out pastes error with `auth_required` and insert nothing. Image
 types: png/jpeg/gif/webp (SVG is excluded: PocketBase serves files with
 their declared content type, and SVG can script on the instance origin).
 
+## Nav: cubby.nav (opt-in)
+
+A sticky two-row site bar. Core only — no backend.
+
+```html
+<script src="/js/core.js" defer></script>
+<script src="/js/nav.js" defer></script>
+```
+
+```js
+const bar = cubby.nav('#sitebar', {
+  pages: [{ href: '/', label: 'Home' }, { href: '/docs/', label: 'Docs' }],
+  sections: 'main',        // where to look for sections (default: main, then body)
+  globalRules: true,       // false to own scroll-margin-top / scroll-behavior yourself
+})
+bar.current()   // { page, section, actions } -- actions is the pinned slot
+bar.refresh()   // re-derive row two after rendering sections with JS
+bar.destroy()
+```
+
+**Row two is derived from the DOM, not declared.** A section opts in by
+carrying `aria-labelledby` pointing at its own heading id:
+
+```html
+<section aria-labelledby="usage" data-nav-label="Usage">
+  <h2 id="usage">Using the thing</h2>
+</section>
+```
+
+That single id is the accessible name, the jump target *and* the nav label, so
+a nav entry pointing at a section that no longer exists is unrepresentable
+rather than merely unlikely. `data-nav-label` overrides a heading too long for
+a bar. Sections with `hidden` are skipped — an entry that scrolls nowhere and
+never highlights reads as broken.
+
+The active section comes from an IntersectionObserver with a band just under
+the bar, and **nothing clears it**: mid-section on a tall block nothing is in
+the band, and the last answer standing is the right one. The bar measures
+itself once, publishes the height as `--cubby-nav-height`, and re-measures on
+resize; the two global rules it leaks (`scroll-margin-top` on ids and
+`:target`, and smooth scrolling under `prefers-reduced-motion: no-preference`)
+read that property, so they cannot disagree with the bar's real height.
+
+`current().actions` is the pinned action area — other widgets mount their
+triggers there without the bar having to know about them.
+
 ## Identity: cubby.identity
 
 OAuth2 only; password auth is disabled platform-wide. One `users` auth

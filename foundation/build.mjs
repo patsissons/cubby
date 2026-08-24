@@ -7,6 +7,7 @@
 //   platform.js   PocketBase: config/identity/db/fs/ai/rooms  (needs core)
 //   markdown.js   render()                                    (needs core)
 //   editor.js     textarea + preview + paste upload           (needs markdown)
+//   nav.js        sticky two-row site bar                     (needs core)
 //   foundation.js DEPRECATED all-in-one core+platform, kept for cached pages
 //
 // NOTE: `npm run dev` holds esbuild watch contexts built from THIS file as it
@@ -78,6 +79,7 @@ const MODULES = [
   { name: 'platform', dir: 'platform', gz: 16, esm: 'esm.js' },
   { name: 'markdown', dir: 'markdown', gz: 8, esm: 'index.js' },
   { name: 'editor', dir: 'editor', gz: 4 },
+  { name: 'nav', dir: 'nav', gz: 4 },
 ]
 
 const banner = (name) => ({ js: `/* cubby ${name} v${pkg.version} (${pkg.repository}) */` })

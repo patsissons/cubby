@@ -180,6 +180,170 @@ await test('a paste with no image is left entirely alone', () => {
   assert.equal(ed.value, '')
 })
 
+// --- nav ---------------------------------------------------------------------
+
+const NAV_SCRIPTS = ['core.js', 'nav.js']
+const NAV_PAGE = `
+  <div id="bar"></div>
+  <main>
+    <section aria-labelledby="intro"><h2 id="intro">Introduction</h2></section>
+    <section aria-labelledby="usage"><h2 id="usage">Usage</h2></section>
+    <section aria-labelledby="long" data-nav-label="Short"><h2 id="long">An extremely long heading</h2></section>
+    <section><h2>Not opted in</h2></section>
+    <section aria-labelledby="hid" hidden><h2 id="hid">Hidden</h2></section>
+    <section aria-labelledby="dangling"><h2>heading id does not exist</h2></section>
+  </main>`
+
+const mountNav = (opts = {}, pageOpts = {}) => {
+  const p = page({ html: NAV_PAGE, scripts: NAV_SCRIPTS, ...pageOpts })
+  return { p, nav: p.cubby.nav('#bar', opts) }
+}
+
+await test('nav derives row two from aria-labelledby, not from a declaration', () => {
+  const { p, nav } = mountNav()
+  assert.deepEqual(p.errors, [])
+  const labels = [...p.document.querySelectorAll('.cubby-nav-sections .cubby-nav-pill')].map(
+    (a) => a.textContent
+  )
+  // Opted-in and visible only. "Not opted in" has no aria-labelledby, "Hidden"
+  // is hidden, and the last section points at an id that does not exist -- an
+  // entry that scrolled nowhere would read as a broken bar.
+  assert.deepEqual(labels, ['Introduction', 'Usage', 'Short'])
+
+  const hrefs = [...p.document.querySelectorAll('.cubby-nav-sections .cubby-nav-pill')].map((a) =>
+    a.getAttribute('href')
+  )
+  assert.deepEqual(hrefs, ['#intro', '#usage', '#long'], 'the heading id IS the jump target')
+})
+
+await test('data-nav-label overrides a heading too long for the bar', () => {
+  const { p } = mountNav()
+  const pill = [...p.document.querySelectorAll('.cubby-nav-sections .cubby-nav-pill')].find(
+    (a) => a.getAttribute('href') === '#long'
+  )
+  assert.equal(pill.textContent, 'Short')
+})
+
+await test('the active section never clears when nothing is in the band', () => {
+  const { p, nav } = mountNav()
+  const observer = p.window.__observers.at(-1)
+  const section = (id) => p.document.querySelector(`[aria-labelledby="${id}"]`)
+  const activeHref = () =>
+    p.document.querySelector('.cubby-nav-sections .cubby-nav-pill[aria-current]')?.getAttribute('href')
+
+  observer.fire([{ target: section('intro'), isIntersecting: true }])
+  assert.equal(activeHref(), '#intro')
+
+  observer.fire([{ target: section('usage'), isIntersecting: true }])
+  assert.equal(activeHref(), '#usage')
+
+  // Mid-section on a tall block: everything reports NOT intersecting. The last
+  // answer standing must survive -- clearing here makes the highlight flicker
+  // off, which reads as a bug.
+  observer.fire([
+    { target: section('intro'), isIntersecting: false },
+    { target: section('usage'), isIntersecting: false },
+  ])
+  assert.equal(activeHref(), '#usage', 'the highlight must not flicker off')
+  assert.equal(nav.current().section, 'usage')
+})
+
+await test('nav publishes its measured height as a custom property', () => {
+  const { p, nav } = mountNav()
+  const prop = p.document.documentElement.style.getPropertyValue('--cubby-nav-height')
+  assert.match(prop, /^\d+px$/, 'one measurement, published for everything else to read')
+  assert.equal(typeof nav.height(), 'number')
+
+  nav.destroy()
+  assert.equal(
+    p.document.documentElement.style.getPropertyValue('--cubby-nav-height'),
+    '',
+    'and removed on destroy'
+  )
+})
+
+await test('the scrolling row can shrink; the action area cannot', () => {
+  const { p } = mountNav()
+  const css = [...p.document.head.querySelectorAll('style[data-cubby-nav]')].map((s) => s.textContent).join('')
+  // Flex items default to min-width:auto and refuse to size below their
+  // content, which shoves the action area off the right edge of a narrow
+  // window instead of scrolling the pills.
+  assert.match(css, /\.cubby-nav-scroll\s*\{[^}]*min-width:\s*0/, 'the pill row must be allowed to shrink')
+  assert.match(css, /\.cubby-nav-actions\s*\{[^}]*flex:\s*none/, 'the action area must not')
+})
+
+await test('nav exposes its action area for other widgets to mount into', () => {
+  const { p, nav } = mountNav()
+  const { actions } = nav.current()
+  assert.ok(actions, 'a widget can find where to put its trigger without being told')
+  assert.equal(actions.className, 'cubby-nav-actions')
+
+  const css = [...p.document.head.querySelectorAll('style[data-cubby-nav]')].map((s) => s.textContent).join('')
+  // Naming a consumer by class here would make the bar know about widgets
+  // that have not been written yet.
+  assert.match(css, /\.cubby-nav-actions > \*/, 'the slot styles its children generically')
+})
+
+await test('refresh() picks up sections rendered after load', () => {
+  const { p, nav } = mountNav()
+  const count = () => p.document.querySelectorAll('.cubby-nav-sections .cubby-nav-pill').length
+  assert.equal(count(), 3)
+
+  const extra = p.document.createElement('section')
+  extra.setAttribute('aria-labelledby', 'later')
+  extra.innerHTML = '<h2 id="later">Rendered later</h2>'
+  p.document.querySelector('main').appendChild(extra)
+  assert.equal(count(), 3, 'not until told')
+
+  nav.refresh()
+  assert.equal(count(), 4)
+  assert.equal(p.window.__observers.at(-1).observed.size, 4, 'and the new one is observed')
+})
+
+await test('the current page pill matches by directory, / and /index.html alike', () => {
+  const pages = [
+    { href: '/', label: 'Home' },
+    { href: '/docs/', label: 'Docs' },
+    { href: '/hello/', label: 'Hello' },
+  ]
+  const currentOf = (url) => {
+    const p = page({ html: NAV_PAGE, scripts: NAV_SCRIPTS, url })
+    p.cubby.nav('#bar', { pages })
+    return p.document.querySelector('.cubby-nav-pages .cubby-nav-pill[aria-current]')?.textContent
+  }
+  assert.equal(currentOf('https://cubby.test/docs/'), 'Docs')
+  assert.equal(currentOf('https://cubby.test/docs/index.html'), 'Docs', 'a nested index is the same page')
+  assert.equal(currentOf('https://cubby.test/'), 'Home')
+  assert.equal(currentOf('https://cubby.test/index.html'), 'Home', 'and so is the root one')
+  assert.equal(currentOf('https://cubby.test/other/'), undefined, 'no false positives')
+})
+
+await test('nav leaks exactly two global rules, and offers an opt-out', () => {
+  const { p } = mountNav()
+  const global = p.document.querySelector('style[data-cubby-nav-global]')
+  assert.ok(global, 'a sticky bar that sets no scroll-margin buries every anchor jump')
+  // The offset is read from the property the bar publishes, so it cannot
+  // disagree with the bar's real height.
+  assert.match(global.textContent, /scroll-margin-top:\s*calc\(var\(--cubby-nav-height/)
+  assert.match(global.textContent, /prefers-reduced-motion: no-preference/)
+
+  const opted = mountNav({ globalRules: false })
+  assert.equal(
+    opted.p.document.querySelector('style[data-cubby-nav-global]'),
+    null,
+    'a host that wants to own them can say so'
+  )
+})
+
+await test('nav.destroy leaves the page as it found it', () => {
+  const { p, nav } = mountNav()
+  const observer = p.window.__observers.at(-1)
+  nav.destroy()
+  assert.equal(p.document.querySelector('.cubby-nav'), null)
+  assert.equal(observer.disconnected, true, 'the observer must not outlive the bar')
+  assert.equal(nav.destroyed, true)
+})
+
 // --- style injection --------------------------------------------------------
 
 await test('injected styles are PREPENDED so the host stylesheet still wins', () => {

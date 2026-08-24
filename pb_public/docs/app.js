@@ -1,25 +1,21 @@
-// Docs app: scrollspy for the section nav, copy buttons on code blocks, and
-// a live footer that proves the page is itself a cubby app.
+// Docs app: the sticky site bar, copy buttons on code blocks, and a live
+// footer that proves the page is itself a cubby app.
 /* global cubby */
 
-// Scrollspy: highlight the nav link for the section in view.
-function wireScrollspy() {
-  const links = [...document.querySelectorAll('#toc a[href^="#"]')]
-  const byId = new Map(links.map((a) => [a.getAttribute('href').slice(1), a]))
-  const observer = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue
-        links.forEach((a) => a.classList.remove('active'))
-        byId.get(entry.target.id)?.classList.add('active')
-      }
-    },
-    { rootMargin: '-15% 0px -75% 0px' }
-  )
-  for (const id of byId.keys()) {
-    const section = document.getElementById(id)
-    if (section) observer.observe(section)
-  }
+// The sticky site bar. Row two is derived from the DOM: each <section> carries
+// aria-labelledby pointing at its own heading id, so a nav entry for a section
+// that no longer exists is unrepresentable rather than merely unlikely. This
+// replaces a hand-written <nav id="toc"> plus a hand-rolled IntersectionObserver.
+function wireNav() {
+  if (!cubby.nav) return
+  cubby.nav('#sitebar', {
+    label: 'Cubby',
+    pages: [
+      { href: '/', label: '\u{1F573}\uFE0F cubby' },
+      { href: '/docs/', label: 'Docs' },
+      { href: '/hello/', label: 'Hello' },
+    ],
+  })
 }
 
 // Copy buttons on every code block.
@@ -63,6 +59,6 @@ async function wireLive() {
   }
 }
 
-wireScrollspy()
+wireNav()
 wireCopyButtons()
 wireLive().catch((err) => console.warn(err))
