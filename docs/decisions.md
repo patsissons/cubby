@@ -216,3 +216,57 @@ mixed one. The rewrite is anchored to real <script>/<link> tags so
 escaped tag examples inside docs code blocks are left alone, and it
 replaces existing stamps so rebuilds stay drift-free. HTML itself is
 still cached up to 4h; only asset mismatches are eliminated.
+
+## The foundation splits into core, platform, and per-feature widgets
+
+Every page loaded one 14.4KB gzipped foundation.js whether it touched a
+backend or not. The building blocks in issue #1 -- nav, graph, preview, an
+editor -- would have added ~16KB more to that same bundle, and most of them
+need no backend at all. So the split is not db/fs/ai/rooms into four
+bundles: of that 14.4KB the PocketBase SDK is ~11KB and every facade needs
+the same client, so four bundles would save ~1.5KB while turning
+state.hooks.beforeLogout and the realtime auth-cycle into a cross-bundle
+public contract. The axis that pays is core (no PocketBase, 1.5KB) /
+platform (PocketBase, 14.2KB) / widgets, which makes the backend the
+optional part and a platform-free page possible for the first time.
+
+Be honest about who benefits: none of the four apps that existed at the time
+got smaller. hello uses every subsystem, docs and the discovery site use
+rooms, and even _template uses identityChanged. The win is forward-looking --
+new widgets never become a tax on pages that ignore them.
+
+Every non-core module imports a virtual '#core' specifier that the build
+resolves three ways: inlined for core itself and for the standalone compat
+bundle, an external ./core.esm.js for the ESM twins, and a window.cubby
+accessor for the IIFE widgets. This fixed a real bug rather than preventing a
+hypothetical one -- markdown.js imported ../errors.js directly, so it shipped
+a second CubbyError class and every error cubby.markdown threw failed
+instanceof against cubby.CubbyError (hello/app.js still checks err.code,
+which remains the documented contract). Six more bundles meant six more
+copies. scripts/core-tests.mjs asserts the class definition appears exactly
+once across the artifacts, and the guard was checked against a deliberately
+old-style build to confirm it discriminates.
+
+foundation.js keeps building and stays standalone -- it inlines core rather
+than depending on a core.js tag. It has to: phio deploys are additive, so it
+never leaves the server, and the CDN caches per URL for ~4h, so a page cached
+before the migration asks for it with no core.js tag beside it. Deprecated
+here means documented as superseded, not scheduled for deletion.
+
+That same caching asymmetry sets the rule for every later module move.
+Content hashes protect the new-URL direction completely: a URL nobody has
+requested is a guaranteed cache miss. They give nothing in the other
+direction, because the origin ignores the query string -- a cached page
+re-requesting /js/markdown.js?v=OLD gets today's bytes. So a bundle may gain
+capability freely, but must never lose capability a cached page depends on
+in the same deploy that moves it. Additions and removals are separate
+commits, a cache generation apart.
+
+Tag order is the dependency declaration, and defer document order is the only
+guarantee: core.js, platform.js, markdown.js, editor.js, then the widgets,
+then app.js. No runtime loader, because a loader builds its URLs at runtime
+and the manifest stamper only sees literal tags -- adopting one would forfeit
+the cache coherence the previous decision bought. A missing hard dependency
+logs once and attaches nothing; a missing platform is silent, because a page
+deliberately serving markdown with no backend is a supported configuration,
+not a failure.

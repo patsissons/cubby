@@ -10,7 +10,9 @@ The short version: `npm run new-app <name>`, edit, `npm run dev`, ship.
    `cubby.config.json`. Directories starting with `_` are hidden from the
    discovery site; `"hidden": true` in `cubby.json` does the same.
 2. **Build the app** in `pb_public/my-app/`: plain html/js/css, no build
-   step. Load the foundation with `<script src="/js/foundation.js" defer>`
+   step. Load cubby with `<script src="/js/core.js" defer>` then
+   `<script src="/js/platform.js" defer>` (core first; skip platform if the
+   app needs no backend)
    and wait for `await cubby.ready`. Copy working patterns from
    `pb_public/hello/` (it exercises every subsystem).
 3. **HASH ROUTING IS MANDATORY.** Unknown server paths fall back to the

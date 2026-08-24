@@ -2,12 +2,14 @@
 
 A shelf of tiny web apps, each in its own cubby. One repo deploys to one
 PocketHost (PocketBase) instance and hosts many static micro-apps: plain
-html/js/css, no build step, served at `/<name>/`, with a shared foundation
+html/js/css, no build step, served at `/<name>/`, with a shared platform
 providing database, file storage, OAuth login, AI chat, and multi-user rooms
-through a single script tag.
+through two script tags — and modules an app opts into one tag at a time, so
+it never pays for what it does not use.
 
 ```html
-<script src="/js/foundation.js" defer></script>
+<script src="/js/core.js" defer></script>
+<script src="/js/platform.js" defer></script>
 <script>
   await cubby.ready
   await cubby.db.collection('scores').create({ points: 3 })
@@ -75,6 +77,9 @@ Prefer doing it by hand? The same steps live in
 ```
 cubby.config.json       the one file a deployment edits
 foundation/src/         cubby client source (esbuild -> pb_public/js/)
+  core/                 namespace, errors, escaping, widget lifecycle, tokens
+  platform/             PocketBase: config, identity, db, fs, ai, rooms
+  markdown/             opt-in renderer and editor
 pb_public/<app>/        one directory per app (html/js/css + cubby.json)
 pb_public/index.html    discovery site
 pb_hooks/               AI proxy + rooms sweeper (PocketBase JSVM)

@@ -18,15 +18,47 @@ Reserved top-level names (see `cubby.config.json` reservedNames): `api`, `_`,
 `js`, `_template`, `index.html`, `sites.json`, `cubby.config.json`. The
 `/_cubby/*` route prefix is used by server hooks.
 
-## Boot and configuration
+## Modules and load order
 
-Every app loads one script:
+cubby ships as layers, so a page pays only for what it uses:
+
+| bundle | gz | what it is |
+|---|---|---|
+| `/js/core.js` | 1.5KB | the `cubby` namespace, `CubbyError`, escaping, the widget lifecycle, design tokens. No PocketBase. |
+| `/js/platform.js` | 14.2KB | PocketBase: `config`, `identity`, `db`, `fs`, `ai`, `rooms`. |
+| `/js/markdown.js` | 6.0KB | `cubby.markdown.render()`. |
+| `/js/foundation.js` | 15.4KB | **deprecated** all-in-one (core + platform). Still built; do not use it in new apps. |
+
+Core comes first and the backend is optional, not the other way round —
+widgets like a preview-only markdown editor need no PocketBase at all, so a
+static content app can load `core.js` + `markdown.js` and never fetch the SDK.
+
+**Tag order is the dependency declaration.** `defer` scripts execute in
+document order and there is no ready event, so the order below is the whole
+contract — no polling, no loader:
 
 ```html
-<script src="/js/foundation.js" defer></script>
+<link rel="stylesheet" href="/css/tokens.css" data-cubby-tokens />
+<script src="/js/core.js" defer></script>
+<script src="/js/platform.js" defer></script>
+<script src="/js/markdown.js" defer></script>
+<script src="app.js" defer></script>
 ```
 
-or as a module: `import cubby from '/js/foundation.esm.js'`.
+Core first; platform next if the app needs a backend; `markdown.js` before
+anything that renders markdown; your `app.js` last. As ES modules:
+`import cubby from '/js/platform.esm.js'` (which imports `core.esm.js`
+itself).
+
+A missing **hard** dependency logs one `console.error` naming the corrective
+tag order and attaches nothing. A missing **platform** is silent — a page
+deliberately serving markdown with no backend is a supported configuration,
+not a failure.
+
+`scripts/core-tests.mjs` loads every app's real tag list in a vm, so a
+mis-ordered page fails the build rather than the browser.
+
+## Boot and configuration
 
 - The app name is the first path segment (`_root` on `/`).
 - One shared PocketBase SDK client, base URL = `location.origin` (everything
@@ -111,19 +143,23 @@ images uploading at once) don't abort each other.
 ## Markdown: cubby.markdown (opt-in)
 
 Markdown rendering and editing ship as a separate bundle so apps that
-don't use it pay zero bytes. Apps opt in with one extra tag, after the
-foundation (both defer, so execution order is guaranteed):
+don't use it pay zero bytes. Apps opt in with one extra tag, after core
+(both defer, so execution order is guaranteed):
 
 ```html
-<script src="/js/foundation.js" defer></script>
+<script src="/js/core.js" defer></script>
 <script src="/js/markdown.js" defer></script>
 ```
+
+Note it needs **core**, not the platform — `render()` works with no backend
+at all. Add `platform.js` between them only if the app also needs one (paste
+image upload does; nothing else in the module does).
 
 The source lives in `foundation/src/markdown/` and builds to
 `pb_public/js/markdown.js` (attaches `cubby.markdown`) and
 `markdown.esm.js` (exports `render` and `createMarkdown`; `render` is pure
 and runs in Node — `scripts/markdown-tests.mjs` tests the shipped
-artifact). Its gzip budget is 20KB (currently ~6KB).
+artifact). Its gzip budget is 8KB (currently ~6KB).
 
 ```js
 el.innerHTML = cubby.markdown.render('# hi **there**')
@@ -331,7 +367,7 @@ Set `PB_HTTP=127.0.0.1:8091` to use another port.
 
 ## Deployment
 
-`deploy.yml` runs on push to main: `npm ci`, rebuild `foundation.js` +
+`deploy.yml` runs on push to main: `npm ci`, rebuild the bundles +
 `sites.json` + the config copy, fail if committed artifacts drifted, then
 sync via PocketHost's phio CLI (SFTP, port 2222, Ed25519 deploy key).
 Secrets: `PHIO_USERNAME`, `PHIO_PASSWORD`, `PHIO_INSTANCE_NAME`. The deploy
@@ -354,7 +390,7 @@ dashboard under Account > Keys) into the `<instance>/` directory.
 - `pb_public` is CDN-cached at the edge with `max-age=14400`: deployed
   changes to static files (including the foundation bundle and app HTML)
   can serve stale for up to 4 hours. Verify a fresh deploy with a
-  cache-busting query (`/js/foundation.js?v=anything`), which bypasses the
+  cache-busting query (`/js/core.js?v=anything`), which bypasses the
   cached key and hits the origin.
 - Hooks run in a synchronous JSVM: no Node APIs, no fetch, no timers, no
   Promises. `$http.send` buffers whole responses.

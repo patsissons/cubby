@@ -8,7 +8,7 @@
 // whole module split. Everything else here is ordinary unit testing.
 import assert from 'node:assert/strict'
 import vm from 'node:vm'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -147,6 +147,26 @@ await test('foundation.js loaded after platform.js declines and says so', () => 
   assert.match(warnings[0], /already loaded/)
   // and critically, only ONE PocketBase client exists
   assert.equal(typeof win.cubby._pb, 'object')
+})
+
+await test('every app page lists its cubby tags in a workable order', () => {
+  const pagesDir = path.join(root, 'pb_public')
+  const pages = readdirSync(pagesDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && e.name !== 'js' && e.name !== 'css')
+    .map((e) => path.join(e.name, 'index.html'))
+    .filter((rel) => existsSync(path.join(pagesDir, rel)))
+  pages.unshift('index.html')
+
+  for (const rel of pages) {
+    const html = readFileSync(path.join(pagesDir, rel), 'utf8')
+    // Platform tags only -- an app's own app.js needs a real DOM.
+    const tags = [...html.matchAll(/<script\b[^>]*?src="\/js\/([^"?]+)[^"]*"/g)].map((m) => m[1])
+    assert.ok(tags.length, `${rel} loads no cubby bundle at all`)
+
+    const { cubby, errors } = loadScripts(...tags)
+    assert.deepEqual(errors, [], `${rel} has its tags in the wrong order: ${tags.join(', ')}`)
+    assert.equal(typeof cubby?.CubbyError, 'function', `${rel} did not end up with a namespace`)
+  }
 })
 
 // --- core is DOM-free at its top level --------------------------------------

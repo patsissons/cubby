@@ -18,7 +18,8 @@
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="stylesheet" href="/css/tokens.css?v=9d78fd37" data-cubby-tokens />
     <link rel="stylesheet" href="style.css?v=5943ef20" />
-    <script src="/js/foundation.js?v=7476268d" defer></script>
+    <script src="/js/core.js?v=3385a29e" defer></script>
+    <script src="/js/platform.js?v=224faa02" defer></script>
     <script src="app.js?v=6c324449" defer></script>
   </head>
   <body>
@@ -28,7 +29,7 @@
         <a href="#nutshell">In a nutshell</a>
         <a href="#good-for">What it's good for</a>
         <a href="#plugin">The Claude plugin</a>
-        <a href="#foundation">The foundation</a>
+        <a href="#foundation">Modules</a>
         <a href="#identity" class="sub">identity</a>
         <a href="#db" class="sub">db</a>
         <a href="#fs" class="sub">fs</a>
@@ -64,10 +65,11 @@
             <div class="arrow">serves</div>
             <div class="box">/&lt;app&gt;/<br /><small>+ / discovery site</small></div>
           </div>
-          <p>Every app loads one script and gets the whole platform:</p>
-          <pre><code>&lt;script src="/js/foundation.js" defer&gt;&lt;/script&gt;</code></pre>
+          <p>Every app loads core, then whatever else it actually uses:</p>
+          <pre><code>&lt;script src="/js/core.js" defer&gt;&lt;/script&gt;
+&lt;script src="/js/platform.js" defer&gt;&lt;/script&gt;</code></pre>
           <p>
-            That script exposes a global <code>cubby</code> object providing a database
+            Those expose a global <code>cubby</code> object providing a database
             (<a href="#db">db</a>), file storage (<a href="#fs">fs</a>), OAuth login
             (<a href="#identity">identity</a>), AI chat (<a href="#ai">ai</a>), and multi-user
             rooms (<a href="#rooms">rooms</a>), all backed by the shared PocketBase instance;
@@ -117,10 +119,31 @@
         </section>
 
         <section id="foundation">
-          <h2>The foundation</h2>
+          <h2>Modules and load order</h2>
           <p>
-            Load <code>/js/foundation.js</code> (or import <code>/js/foundation.esm.js</code>),
-            wait for <code>cubby.ready</code>, then use anything:
+            cubby ships in layers so a page pays only for what it uses.
+            <code>core.js</code> (1.5KB) is the namespace, errors, escaping and the
+            widget lifecycle — no PocketBase at all. <code>platform.js</code> (14.2KB)
+            adds db, fs, identity, ai and rooms. Modules like
+            <a href="#markdown">markdown</a> layer on top. A page that only renders
+            content can load core and markdown and never fetch the SDK.
+          </p>
+          <p>
+            <strong>Tag order is the dependency declaration.</strong>
+            <code>defer</code> scripts run in document order and there is no ready
+            event, so this order is the whole contract — core first, your app last:
+          </p>
+          <pre><code>&lt;script src="/js/core.js" defer&gt;&lt;/script&gt;
+&lt;script src="/js/platform.js" defer&gt;&lt;/script&gt;
+&lt;script src="/js/markdown.js" defer&gt;&lt;/script&gt;
+&lt;script src="app.js" defer&gt;&lt;/script&gt;</code></pre>
+          <p>
+            As ES modules, import <code>/js/platform.esm.js</code>.
+            <code>/js/foundation.js</code> is the deprecated all-in-one; it still
+            works, but new apps should not use it.
+          </p>
+          <p>
+            Wait for <code>cubby.ready</code>, then use anything:
           </p>
           <pre><code>await cubby.ready
 
@@ -201,10 +224,11 @@ await cubby.fs.read('data.json', { app: 'otherapp' }) // cross-app read</code></
           <h3>cubby.markdown</h3>
           <p>
             Markdown rendering and an editor with live preview and paste-image upload. Opt-in:
-            one extra script tag after the foundation (both <code>defer</code>, so order is
-            guaranteed) — apps that skip it pay zero bytes.
+            one extra script tag after <code>core.js</code> (both <code>defer</code>, so order
+            is guaranteed) — apps that skip it pay zero bytes. It needs core, not the
+            platform: <code>render()</code> works with no backend at all.
           </p>
-          <pre><code>&lt;script src="/js/foundation.js" defer&gt;&lt;/script&gt;
+          <pre><code>&lt;script src="/js/core.js" defer&gt;&lt;/script&gt;
 &lt;script src="/js/markdown.js" defer&gt;&lt;/script&gt;</code></pre>
           <pre><code>el.innerHTML = cubby.markdown.render('# hi **there**')
 
@@ -294,7 +318,7 @@ await room.leave()</code></pre>
           <h2>Building an app</h2>
           <p>An app is one directory served at <code>/&lt;name&gt;/</code>:</p>
           <pre><code>pb_public/myapp/
-├── index.html      loads /js/foundation.js + app.js
+├── index.html      loads /js/core.js + /js/platform.js + app.js
 ├── app.js          await cubby.ready, then build
 ├── style.css
 └── cubby.json      { name, title, description, icon }   -> discovery site card</code></pre>

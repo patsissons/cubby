@@ -28,9 +28,10 @@ npm run new-app <name> -- --title "My App" --description "One line" --icon "🎯
 
 ```
 pb_public/<name>/
-├── index.html    loads /js/foundation.js + app.js (both defer)
+├── index.html    loads /css/tokens.css + the cubby tags + app.js (all defer)
 ├── app.js        the app; await cubby.ready before using cubby.*
-├── style.css     dark-mode aware (see template's prefers-color-scheme vars)
+├── style.css     consumes the shared tokens (/css/tokens.css); do not
+                  redefine --bg/--fg/--accent unless the app really means to
 └── cubby.json    manifest: { name, title, description, icon, hidden?,
                               category?, tags? }
 ```
@@ -53,7 +54,31 @@ composes with hash routes.
 
 ## The cubby API
 
-Load `<script src="/js/foundation.js" defer></script>`, then in app code:
+### Loading it: tag order IS the dependency declaration
+
+`defer` scripts run in document order and there is no ready event, so the
+order of these tags is the whole contract. Core first, the app's own script
+last:
+
+```html
+<link rel="stylesheet" href="/css/tokens.css" data-cubby-tokens />
+<link rel="stylesheet" href="style.css" />
+<script src="/js/core.js" defer></script>       <!-- always, first -->
+<script src="/js/platform.js" defer></script>   <!-- only if the app needs a backend -->
+<script src="/js/markdown.js" defer></script>   <!-- opt-in modules, in this order -->
+<script src="app.js" defer></script>            <!-- always, last -->
+```
+
+`npm run new-app <name> -- --modules markdown` writes these for you and puts
+them in the right order; it only offers modules that are actually built.
+
+Load ONLY what the app uses. `core.js` is 1.5KB and carries no PocketBase;
+`platform.js` is 14.2KB and is where db/fs/ai/rooms/identity live. An app that
+just renders content needs `core.js` + `markdown.js` and nothing else.
+
+`/js/foundation.js` is the DEPRECATED all-in-one. Never use it in a new app.
+
+Then in app code:
 
 ```js
 await cubby.ready              // config fetched, auth restored
@@ -94,13 +119,17 @@ Reads are public; writes need a signed-in user. Files are shared per
 
 When an app needs markdown — rendering user text, notes, comments, an
 editor — use this module. NEVER hand-roll a markdown renderer, sanitizer,
-or paste-upload handler. Load it with one extra tag, after foundation.js
+or paste-upload handler. Load it with one extra tag, after core.js
 (both defer; order matters):
 
 ```html
-<script src="/js/foundation.js" defer></script>
+<script src="/js/core.js" defer></script>
 <script src="/js/markdown.js" defer></script>
 ```
+
+It needs **core**, not the platform: `render()` works with no backend at all.
+Add `platform.js` between them only if the app needs one anyway (paste image
+upload does; nothing else in the module does).
 
 ```js
 el.innerHTML = cubby.markdown.render(mdText)   // safe by construction
@@ -226,7 +255,7 @@ instance) restarts.
 
 ## What NOT to touch
 
-- `foundation/`, `pb_public/js/` (built artifacts)
+- `foundation/`, `pb_public/js/`, `pb_public/css/` (built artifacts)
 - `pb_hooks/`
 - `pb_migrations/*_platform_*`
 - other apps' directories
