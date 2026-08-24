@@ -1,13 +1,23 @@
-import { CubbyError } from '#core'
-import { render } from './render.js'
-import { injectStyles } from './styles.js'
+import { CubbyError, widget } from '#core'
 
 /**
  * Markdown editor factory: a plain textarea plus a live preview, in one of
  * two layouts. 'tabs' (default) is GitHub-style Write | Preview; 'split'
  * shows the preview beside the textarea, re-rendering as you type
  * (stacked on narrow screens). Paste/drop image upload is wired in unless
- * opts.upload is false.
+ * opts.upload is false, or unless there is no platform to upload to.
+ *
+ * A plain <textarea>, deliberately: no CodeMirror, no contenteditable. The
+ * thing being edited is markdown and the thing that has to be right is the
+ * paste handling; a textarea gets undo, spellcheck, mobile keyboards and
+ * every accessibility affordance for free.
+ *
+ * render and injectStyles are read off cubby.markdown at CALL time rather
+ * than imported, so this file bundles into /js/editor.js without dragging the
+ * whole renderer in with it -- and so the preview renders through exactly the
+ * same renderer the consumer uses for the saved value. That identity is the
+ * point: what you see while typing is not an approximation of what gets
+ * stored.
  */
 
 /** @param {object} cubby @param {Function} attachImageUpload */
@@ -29,11 +39,15 @@ export function createEditor(cubby, attachImageUpload) {
    * }} [opts]
    * @returns {{value: string, textarea: HTMLTextAreaElement, focus: () => void, refresh: () => void, destroy: () => void}}
    */
-  return function editor(container, opts = {}) {
+  return widget('editor', (ctx, container, opts = {}) => {
     if (typeof document === 'undefined') {
       throw new CubbyError('bad_request', 'editor requires a DOM')
     }
-    injectStyles()
+    const md = cubby.markdown
+    if (!md) {
+      throw new CubbyError('bad_request', 'the editor needs /js/markdown.js loaded before it')
+    }
+    md.injectStyles()
     const mode = opts.preview === false ? 'none' : opts.preview === 'split' ? 'split' : 'tabs'
     const debounceMs = opts.previewDebounceMs ?? 150
     const onChange = opts.onChange || (() => {})
@@ -53,7 +67,7 @@ export function createEditor(cubby, attachImageUpload) {
     function renderPreview() {
       const value = textarea.value
       previewEl.innerHTML = value.trim()
-        ? render(value, { linkTarget: opts.linkTarget })
+        ? md.render(value, { linkTarget: opts.linkTarget })
         : '<p class="cubby-md-empty">Nothing to preview</p>'
     }
 
@@ -83,8 +97,8 @@ export function createEditor(cubby, attachImageUpload) {
         if (showPreview) renderPreview()
         else textarea.focus()
       }
-      writeTab.addEventListener('click', () => select(false))
-      previewTab.addEventListener('click', () => select(true))
+      ctx.on(writeTab, 'click', () => select(false))
+      ctx.on(previewTab, 'click', () => select(true))
       previewEl.hidden = true
       root.append(tabs, textarea, previewEl)
     } else if (mode === 'split') {
@@ -98,47 +112,63 @@ export function createEditor(cubby, attachImageUpload) {
     }
 
     let timer = null
-    textarea.addEventListener('input', () => {
+    ctx.on(textarea, 'input', () => {
       onChange(textarea.value)
       if (mode === 'split') {
         clearTimeout(timer)
         timer = setTimeout(renderPreview, debounceMs)
       }
     })
+    ctx.own(() => clearTimeout(timer))
 
-    let detach = () => {}
-    if (opts.upload !== false) {
-      detach = attachImageUpload(textarea, {
-        ...(opts.upload || {}),
-        onUploadStart: opts.onUploadStart,
-        onUpload: opts.onUpload,
-        onError: opts.onError,
-      })
+    // Every image this editor has successfully uploaded, in order.
+    const images = []
+
+    // Upload needs a platform to upload to. With none, this is simply a plain
+    // composer -- silently. The platform's absence is a supported
+    // configuration (a static page with no backend), never a failure to
+    // report, so nothing is logged and no affordance is shown.
+    if (opts.upload !== false && cubby.hasPlatform?.()) {
+      ctx.own(
+        attachImageUpload(textarea, {
+          ...(opts.upload || {}),
+          onUploadStart: opts.onUploadStart,
+          onUpload: (info) => {
+            images.push(info)
+            opts.onUpload?.(info)
+          },
+          onError: opts.onError,
+        })
+      )
     }
 
     container.replaceChildren(root)
+    ctx.own(() => root.remove())
 
     return {
       get value() {
         return textarea.value
       },
       set value(v) {
+        this.setValue(v)
+      },
+      /** Replace the contents, firing onChange and refreshing a visible preview. */
+      setValue(v) {
         textarea.value = String(v)
         onChange(textarea.value)
         if (mode === 'split' || (mode === 'tabs' && !previewEl.hidden)) renderPreview()
       },
       textarea,
+      /** The preview element, so a caller can style or measure it. */
+      preview: previewEl,
+      /** Images uploaded through this editor: [{ name, path, url }]. */
+      images,
       focus() {
         textarea.focus()
       },
       refresh() {
         renderPreview()
       },
-      destroy() {
-        clearTimeout(timer)
-        detach()
-        root.remove()
-      },
     }
-  }
+  })
 }

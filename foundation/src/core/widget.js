@@ -74,28 +74,38 @@ export function widget(name, factory) {
     }
 
     let destroyed = false
-    return {
-      ...handle,
-      element,
-      get destroyed() {
-        return destroyed
+
+    // Copy property DESCRIPTORS, not values. A spread would evaluate the
+    // factory's getters once and freeze the results as plain properties --
+    // which silently breaks the commonest handle shape there is, a live
+    // `value` accessor over an input element.
+    const api = Object.defineProperties({}, Object.getOwnPropertyDescriptors(handle))
+
+    return Object.defineProperties(api, {
+      element: { enumerable: true, value: element },
+      destroyed: {
+        enumerable: true,
+        get: () => destroyed,
       },
       /** Idempotent: calling it twice is a no-op, never a double-teardown. */
-      destroy() {
-        if (destroyed) return
-        destroyed = true
+      destroy: {
+        enumerable: true,
+        value: () => {
+          if (destroyed) return
+          destroyed = true
         // The widget's own teardown runs first, while its listeners are still
         // attached — it may need to emit a final event or restore the DOM.
-        if (typeof handle.destroy === 'function') {
-          try {
-            handle.destroy()
-          } catch (err) {
-            console.error(`[cubby.${name}] destroy threw:`, err)
+          if (typeof handle.destroy === 'function') {
+            try {
+              handle.destroy()
+            } catch (err) {
+              console.error(`[cubby.${name}] destroy threw:`, err)
+            }
           }
-        }
-        runCleanups(cleanups, name)
+          runCleanups(cleanups, name)
+        },
       },
-    }
+    })
   }
 }
 

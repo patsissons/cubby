@@ -6,6 +6,7 @@
 //   core.js       the namespace, CubbyError, escaping, widget lifecycle, tokens
 //   platform.js   PocketBase: config/identity/db/fs/ai/rooms  (needs core)
 //   markdown.js   render()                                    (needs core)
+//   editor.js     textarea + preview + paste upload           (needs markdown)
 //   foundation.js DEPRECATED all-in-one core+platform, kept for cached pages
 //
 // An ESM twin ships only where a Node test or the smoke suite imports it.
@@ -71,6 +72,7 @@ const MODULES = [
   { name: 'core', dir: 'core', gz: 4, esm: 'index.js', self: true },
   { name: 'platform', dir: 'platform', gz: 16, esm: 'esm.js' },
   { name: 'markdown', dir: 'markdown', gz: 8, esm: 'index.js' },
+  { name: 'editor', dir: 'editor', gz: 4 },
 ]
 
 const banner = (name) => ({ js: `/* cubby ${name} v${pkg.version} (${pkg.repository}) */` })

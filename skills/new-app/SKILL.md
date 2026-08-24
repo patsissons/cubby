@@ -125,11 +125,13 @@ or paste-upload handler. Load it with one extra tag, after core.js
 ```html
 <script src="/js/core.js" defer></script>
 <script src="/js/markdown.js" defer></script>
+<script src="/js/editor.js" defer></script>   <!-- only if you need the editor -->
 ```
 
 It needs **core**, not the platform: `render()` works with no backend at all.
 Add `platform.js` between them only if the app needs one anyway (paste image
-upload does; nothing else in the module does).
+upload does; nothing else in the module does). With no platform the editor is
+a plain composer with a working preview and upload silently off.
 
 ```js
 el.innerHTML = cubby.markdown.render(mdText)   // safe by construction
@@ -147,7 +149,7 @@ supported: raw HTML passthrough, reference-style `[a][b]` links, setext
 headings.
 
 ```js
-const ed = cubby.markdown.editor($('editor'), {
+const ed = cubby.editor($('editor'), {   // needs /js/editor.js after markdown.js
   value: '',                      // initial markdown
   preview: true,                  // Write|Preview tabs; 'split' = live side-by-side; false = none
   rows: 8,
@@ -165,7 +167,8 @@ placeholder that is swapped for the real file URL when the upload lands
 (GitHub PR editor behavior). Uploads go to
 `uploads/<userId>/<token>.<ext>` via cubby.fs and require sign-in —
 surface `auth_required` from onError. png/jpeg/gif/webp only.
-`cubby.markdown.attachImageUpload(textarea, opts)` wires the same
+`cubby.editor` lives in its own bundle so apps that only render markdown
+don't pay for it. `cubby.markdown.attachImageUpload(textarea, opts)` wires the same
 paste/drop flow onto your own textarea and returns a detach function.
 See the "Markdown" section of `pb_public/hello/` for a working example.
 

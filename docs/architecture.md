@@ -164,18 +164,47 @@ artifact). Its gzip budget is 8KB (currently ~6KB).
 ```js
 el.innerHTML = cubby.markdown.render('# hi **there**')
 cubby.markdown.render(md, { linkTarget: '_blank' })  // adds rel="noopener noreferrer"
+cubby.markdown.injectStyles()        // idempotent; the editor calls it itself
+```
 
-const ed = cubby.markdown.editor(container, {
+## Editor: cubby.editor (opt-in)
+
+A markdown textarea with live preview and paste/drop image upload. Needs
+`core.js` and `markdown.js` before it; the platform is optional.
+
+```html
+<script src="/js/core.js" defer></script>
+<script src="/js/markdown.js" defer></script>
+<script src="/js/editor.js" defer></script>
+```
+
+```js
+const ed = cubby.editor(container, {          // container, or a selector string
   value: '',
   preview: true,                       // Write|Preview tabs; 'split' = live pane; false = none
   upload: { pathPrefix: 'uploads/' },  // or false to disable paste/drop upload
   onChange(value) {}, onUpload({ name, path, url }) {}, onError(err) {},
 })
-ed.value; ed.refresh(); ed.destroy()
-
-const detach = cubby.markdown.attachImageUpload(textarea, opts) // low-level
-cubby.markdown.injectStyles()        // idempotent; editor() calls it itself
+ed.value          // live accessor
+ed.setValue(md)   // fires onChange and refreshes a visible preview
+ed.images         // [{ name, path, url }] uploaded through this editor
+ed.element        // the mounted root
+ed.preview        // the preview element
+ed.focus(); ed.refresh(); ed.destroy()
 ```
+
+The preview renders through **the same renderer** the app uses for the saved
+value — `cubby.markdown.render`, read off the namespace at call time rather
+than bundled, so `editor.js` is 2KB and there is exactly one renderer on the
+page. What you see while typing is not an approximation of what gets stored.
+
+**With no platform loaded the editor is a plain composer**: the preview still
+works, upload is simply not wired, and nothing is logged. A page deliberately
+serving markdown with no backend is a supported configuration, not a failure.
+
+`cubby.markdown.editor` and `cubby.markdown.attachImageUpload` still exist and
+still work; they are the previous home of this module and will be removed a
+release after apps have moved.
 
 **Safety model: escaped by construction.** The renderer is a hand-rolled
 GFM subset with no dependencies and no sanitizer, because none is needed:

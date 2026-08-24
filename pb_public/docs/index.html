@@ -18,7 +18,7 @@
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="stylesheet" href="/css/tokens.css?v=9d78fd37" data-cubby-tokens />
     <link rel="stylesheet" href="style.css?v=5943ef20" />
-    <script src="/js/core.js?v=3385a29e" defer></script>
+    <script src="/js/core.js?v=f32adb29" defer></script>
     <script src="/js/platform.js?v=224faa02" defer></script>
     <script src="app.js?v=6c324449" defer></script>
   </head>
@@ -232,7 +232,7 @@ await cubby.fs.read('data.json', { app: 'otherapp' }) // cross-app read</code></
 &lt;script src="/js/markdown.js" defer&gt;&lt;/script&gt;</code></pre>
           <pre><code>el.innerHTML = cubby.markdown.render('# hi **there**')
 
-const ed = cubby.markdown.editor(container, {
+const ed = cubby.editor(container, {
   value: '',
   preview: true,                       // Write|Preview tabs; 'split' = live pane
   upload: { pathPrefix: 'uploads/' },  // paste/drop images upload via cubby.fs

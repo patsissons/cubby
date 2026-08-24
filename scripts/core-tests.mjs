@@ -149,6 +149,39 @@ await test('foundation.js loaded after platform.js declines and says so', () => 
   assert.equal(typeof win.cubby._pb, 'object')
 })
 
+await test('editor.js needs markdown and says so exactly once', () => {
+  const withMarkdown = loadScripts('core.js', 'markdown.js', 'editor.js')
+  assert.deepEqual(withMarkdown.errors, [])
+  assert.equal(typeof withMarkdown.cubby.editor, 'function')
+
+  const without = loadScripts('core.js', 'editor.js')
+  assert.equal(without.cubby.editor, undefined, 'must not attach without its renderer')
+  assert.equal(without.errors.length, 1)
+  assert.match(without.errors[0], /markdown\.js/)
+})
+
+await test('editor.js carries no second renderer and no second error class', () => {
+  const js = bundle('editor.js')
+  assert.equal((js.match(/name="CubbyError"/g) || []).length, 0)
+  // Renderer-only markup that markdown.js emits and the editor must not.
+  for (const marker of ['blockquote', 'cubby-md-tab']) {
+    const inMarkdown = bundle('markdown.js').includes(marker)
+    assert.ok(inMarkdown, `sanity: markdown.js should contain ${marker} in this phase`)
+  }
+  assert.ok(!js.includes('blockquote'), 'editor.js must borrow render, not bundle it')
+  assert.ok(js.length < bundle('markdown.js').length / 2, 'and stay much smaller than it')
+})
+
+await test('the editor degrades to a plain composer with no platform, silently', () => {
+  // The brief's rule: absence of a platform is a supported configuration, not
+  // a failure. Nothing may be logged, and the preview must still work.
+  const { cubby, errors } = loadScripts('core.js', 'markdown.js', 'editor.js')
+  assert.deepEqual(errors, [], 'core + markdown + editor alone must log nothing')
+  assert.equal(cubby.hasPlatform(), false, 'no platform is present')
+  assert.equal(typeof cubby.editor, 'function', 'and the editor is still available')
+  assert.equal(typeof cubby.markdown.render, 'function', 'and the preview renderer works')
+})
+
 await test('every app page lists its cubby tags in a workable order', () => {
   const pagesDir = path.join(root, 'pb_public')
   const pages = readdirSync(pagesDir, { withFileTypes: true })
@@ -286,6 +319,32 @@ await test('destroy removes every listener registered through ctx.on', () => {
   handle.destroy()
   assert.equal(el.listeners.length, 0, 'listeners must not outlive the widget')
   assert.equal(handle.destroyed, true)
+})
+
+await test('a live value accessor survives the handle wrapper', () => {
+  // Regression: the wrapper used to spread the factory's handle, which
+  // evaluates getters once and freezes them as plain properties. That silently
+  // broke the commonest handle shape there is -- editor.value would have
+  // returned its initial text forever.
+  const mount = core.widget('probe', () => {
+    let v = 'initial'
+    return {
+      get value() {
+        return v
+      },
+      set value(x) {
+        v = String(x)
+      },
+      setValue(x) {
+        v = String(x)
+      },
+    }
+  })
+  const handle = mount(stubEl())
+  handle.setValue('changed')
+  assert.equal(handle.value, 'changed', 'the getter must stay live')
+  handle.value = 'assigned'
+  assert.equal(handle.value, 'assigned', 'and the setter must survive')
 })
 
 await test('destroy is idempotent', () => {
