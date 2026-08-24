@@ -81,6 +81,10 @@ export function widget(name, factory) {
     // `value` accessor over an input element.
     const api = Object.defineProperties({}, Object.getOwnPropertyDescriptors(handle))
 
+    // element, destroyed and destroy are the contract and are applied LAST,
+    // so they win over anything the factory returned under those names.
+    // `element` is always the mount target -- a widget with a second
+    // interesting node must give it a different name.
     return Object.defineProperties(api, {
       element: { enumerable: true, value: element },
       destroyed: {

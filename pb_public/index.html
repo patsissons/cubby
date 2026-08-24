@@ -268,81 +268,10 @@
         color: var(--accent);
       }
 
-      #preview {
-        position: fixed;
-        z-index: 50;
-        width: 444px;
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: 14px;
-        padding: 0.6rem 0.75rem 0.55rem;
-        box-shadow: var(--shadow-hover);
-        pointer-events: none;
-        opacity: 0;
-        transition: opacity 0.18s ease;
-      }
-
-      #preview.show {
-        opacity: 1;
-      }
-
-      .preview-label {
-        font-weight: 600;
-        font-size: 0.85rem;
-        margin-bottom: 0.45rem;
-      }
-
-      .frame-wrap {
-        width: 420px;
-        height: 294px;
-        overflow: hidden;
-        border-radius: 8px;
-        border: 1px solid var(--border);
-        background: var(--bg);
-        position: relative;
-      }
-
-      .frame-wrap::before {
-        content: 'loading preview...';
-        position: absolute;
-        inset: 0;
-        display: grid;
-        place-items: center;
-        color: var(--muted);
-        font-size: 0.85rem;
-      }
-
-      .frame-wrap.loaded::before {
-        content: none;
-      }
-
-      #preview-frame {
-        width: 1000px;
-        height: 700px;
-        border: 0;
-        transform: scale(0.42);
-        transform-origin: top left;
-        pointer-events: none;
-        background: var(--bg);
-      }
-
-      .preview-hint {
-        color: var(--muted);
-        font-size: 0.75rem;
-        margin-top: 0.4rem;
-        text-align: right;
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-        .card,
-        .card .go::after,
-        #preview {
-          transition: none;
-        }
-      }
     </style>
     <script src="/js/core.js?v=f32adb29" defer></script>
-    <script src="/js/platform.js?v=224faa02" defer></script>
+    <script src="/js/platform.js?v=b1f620e0" defer></script>
+    <script src="/js/preview.js?v=e3d8c254" defer></script>
   </head>
   <body>
     <header>
@@ -374,14 +303,6 @@
         <p class="no-match" id="no-match" hidden>nothing matches that filter</p>
       </div>
     </main>
-
-    <div id="preview" hidden aria-hidden="true">
-      <div class="preview-label" id="preview-label"></div>
-      <div class="frame-wrap" id="frame-wrap">
-        <iframe id="preview-frame" title="App preview" tabindex="-1"></iframe>
-      </div>
-      <div class="preview-hint">click the card to open</div>
-    </div>
 
     <footer>
       <div class="wrap">
@@ -449,71 +370,6 @@
           return ''
         }
 
-        // Hover-intent preview: linger 1s on a card and a popover shows the
-        // app live (scaled, non-interactive) beside it.
-        const preview = document.getElementById('preview')
-        const previewFrame = document.getElementById('preview-frame')
-        const previewLabel = document.getElementById('preview-label')
-        const frameWrap = document.getElementById('frame-wrap')
-        const canHover = window.matchMedia('(hover: hover)').matches
-        let hoverTimer = null
-        let unloadTimer = null
-
-        previewFrame.addEventListener('load', () => {
-          if (previewFrame.src) frameWrap.classList.add('loaded')
-        })
-
-        function showPreview(site, card) {
-          clearTimeout(unloadTimer)
-          const rect = card.getBoundingClientRect()
-          const w = 444
-          const h = 360
-          let left = rect.right + 14
-          if (left + w > innerWidth - 8) left = rect.left - w - 14
-          if (left < 8) left = Math.min(Math.max(8, rect.left), innerWidth - w - 8)
-          const top = Math.max(8, Math.min(rect.top, innerHeight - h - 8))
-          preview.style.left = `${Math.round(left)}px`
-          preview.style.top = `${Math.round(top)}px`
-          previewLabel.textContent = `${site.icon} ${site.title}`
-          const src = `/${site.name}/`
-          if (previewFrame.getAttribute('src') !== src) {
-            frameWrap.classList.remove('loaded')
-            previewFrame.src = src
-          }
-          preview.hidden = false
-          requestAnimationFrame(() => preview.classList.add('show'))
-        }
-
-        function hidePreview() {
-          clearTimeout(hoverTimer)
-          preview.classList.remove('show')
-          preview.hidden = true
-          // Drop the app (and its realtime connections) shortly after hiding
-          // so quick re-hovers of the same card stay instant.
-          clearTimeout(unloadTimer)
-          unloadTimer = setTimeout(() => {
-            previewFrame.removeAttribute('src')
-            frameWrap.classList.remove('loaded')
-          }, 4000)
-        }
-
-        function wirePreview(card, site) {
-          if (!canHover) return
-          card.addEventListener('mouseenter', () => {
-            clearTimeout(hoverTimer)
-            hoverTimer = setTimeout(() => showPreview(site, card), 1000)
-          })
-          card.addEventListener('mouseleave', hidePreview)
-          card.addEventListener('focus', () => {
-            clearTimeout(hoverTimer)
-            hoverTimer = setTimeout(() => showPreview(site, card), 1000)
-          })
-          card.addEventListener('blur', hidePreview)
-        }
-        addEventListener('scroll', hidePreview, { passive: true })
-        addEventListener('keydown', (e) => {
-          if (e.key === 'Escape') hidePreview()
-        })
 
         function render() {
           const query = search.value.trim()
@@ -561,10 +417,19 @@
             go.className = 'go'
             go.textContent = 'open'
             a.append(go)
-            wirePreview(a, site)
+            // Read by /js/preview.js; delegated, so cards rendered by a later
+            // search or re-sort need no re-wiring.
+            a.dataset.previewTitle = `${site.icon} ${site.title}`
+            a.dataset.previewDescription = site.description || ''
             li.append(a)
             grid.append(li)
           }
+        }
+
+        // Hover-intent preview: linger on a card and the app itself appears
+        // beside it. Same-origin, so always frameable.
+        if (cubby.preview) {
+          cubby.preview(grid, { selector: 'a.card', delay: 1000 })
         }
 
         try {

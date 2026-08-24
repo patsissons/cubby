@@ -127,6 +127,7 @@ or paste-upload handler. Load it with one extra tag, after core.js
 <script src="/js/markdown.js" defer></script>
 <script src="/js/editor.js" defer></script>   <!-- only if you need the editor -->
 <script src="/js/nav.js" defer></script>      <!-- sticky site bar; core only -->
+<script src="/js/preview.js" defer></script>  <!-- hover-a-link page previews -->
 ```
 
 It needs **core**, not the platform: `render()` works with no backend at all.

@@ -18,6 +18,7 @@ const bundle = (file) => readFileSync(path.join(root, 'pb_public/js', file), 'ut
 const core = await import('../pb_public/js/core.esm.js')
 const markdown = await import('../pb_public/js/markdown.esm.js')
 const platform = await import('../pb_public/js/platform.esm.js')
+const preview = await import('../pb_public/js/preview.esm.js')
 
 let passed = 0
 async function test(name, fn) {
@@ -280,6 +281,64 @@ await test('sanitizeUrl refuses script-bearing schemes, including obfuscated one
   assert.equal(core.sanitizeUrl(undefined), '')
 })
 
+// --- preview: the framing allowlist -----------------------------------------
+//
+// A blocked frame cannot be detected from JavaScript -- no error event fires,
+// and load may still run on the blocked shell -- so "try it and fall back" is
+// not implementable. Framing is therefore an allowlist of MEASURED hosts, and
+// getting its matching wrong is a security bug, not a cosmetic one.
+
+const frameable = (href, allow = [], origin = 'https://cubby.test') =>
+  preview.isFrameable(href, { allow, origin })
+
+await test('same-origin is always frameable', () => {
+  assert.equal(frameable('/docs/'), true, 'a site can always frame its own pages')
+  assert.equal(frameable('https://cubby.test/hello/'), true)
+  assert.equal(frameable('not-a-url'), true, 'a bare word IS a relative URL against the origin')
+  assert.equal(frameable('https://other.test/'), false, 'and nothing else is, by default')
+})
+
+await test('a bare allowlist entry is an EXACT host', () => {
+  assert.equal(frameable('https://example.com/x', ['example.com']), true)
+  // The control that matters: a suffix rule admitting this passes every
+  // positive test while being useless.
+  assert.equal(frameable('https://evilexample.com/x', ['example.com']), false)
+  assert.equal(frameable('https://sub.example.com/x', ['example.com']), false, 'exact means exact')
+})
+
+await test('a leading dot means subdomain at any depth, and nothing else', () => {
+  assert.equal(frameable('https://example.com/x', ['.example.com']), true, 'and the bare domain')
+  assert.equal(frameable('https://a.example.com/x', ['.example.com']), true)
+  assert.equal(frameable('https://a.b.c.example.com/x', ['.example.com']), true, 'any depth')
+  // The second hostile control: the allowed domain appears in the middle of
+  // an attacker's hostname.
+  assert.equal(frameable('https://x.example.com.evil.com/', ['.example.com']), false)
+  assert.equal(frameable('https://evilexample.com/', ['.example.com']), false)
+})
+
+await test('only http and https ever reach frame.src', () => {
+  for (const href of [
+    'javascript:alert(1)',
+    'data:text/html,<script>',
+    'file:///etc/passwd',
+    'ftp://example.com/x',
+    'vbscript:msgbox',
+  ]) {
+    assert.equal(frameable(href, ['example.com']), false, `must refuse ${href}`)
+  }
+})
+
+await test('allowlist matching ignores case and stray whitespace', () => {
+  assert.equal(frameable('https://EXAMPLE.com/x', ['example.com']), true)
+  assert.equal(frameable('https://example.com/x', ['  Example.COM  ']), true)
+  assert.equal(frameable('https://example.com/x', ['', null, undefined, 'example.com']), true)
+})
+
+await test('resolveUrl refuses garbage without throwing', () => {
+  assert.equal(preview.resolveUrl('http://[', 'https://cubby.test'), null)
+  assert.ok(preview.resolveUrl('/x', 'https://cubby.test') instanceof URL)
+})
+
 // --- widget lifecycle -------------------------------------------------------
 //
 // Exercised with a stub element rather than jsdom: widget() only touches
@@ -345,6 +404,18 @@ await test('a live value accessor survives the handle wrapper', () => {
   assert.equal(handle.value, 'changed', 'the getter must stay live')
   handle.value = 'assigned'
   assert.equal(handle.value, 'assigned', 'and the setter must survive')
+})
+
+await test('element always means the mount target, whatever the factory returns', () => {
+  // The contract props are applied last and win. A widget with a second
+  // interesting node (preview's popover, nav's bar) must name it something
+  // else -- otherwise the override is silent and the handle lies.
+  const el = stubEl()
+  const decoy = { decoy: true }
+  const mount = core.widget('probe', () => ({ element: decoy, destroyed: 'nope' }))
+  const handle = mount(el)
+  assert.equal(handle.element, el, 'the factory cannot repurpose element')
+  assert.equal(handle.destroyed, false, 'nor destroyed')
 })
 
 await test('destroy is idempotent', () => {

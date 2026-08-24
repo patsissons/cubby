@@ -8,6 +8,9 @@ const DEFAULT_CONFIG = {
   instanceUrl: '',
   oauthProviders: [],
   ai: { defaultModel: '', models: {} },
+  // Hosts whose framing headers were actually measured; see
+  // foundation/src/preview/frameable.js. Same-origin never needs listing.
+  preview: { frameable: [] },
   reservedNames: [],
 }
 

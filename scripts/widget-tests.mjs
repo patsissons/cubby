@@ -4,7 +4,7 @@
 //   npm run build
 //   node scripts/widget-tests.mjs
 import assert from 'node:assert/strict'
-import { page } from './widget-harness.mjs'
+import { page, bundle as bundleSource } from './widget-harness.mjs'
 
 let passed = 0
 async function test(name, fn) {
@@ -342,6 +342,225 @@ await test('nav.destroy leaves the page as it found it', () => {
   assert.equal(p.document.querySelector('.cubby-nav'), null)
   assert.equal(observer.disconnected, true, 'the observer must not outlive the bar')
   assert.equal(nav.destroyed, true)
+})
+
+// --- preview -----------------------------------------------------------------
+
+const PREVIEW_SCRIPTS = ['core.js', 'preview.js']
+const PREVIEW_PAGE = `
+  <main>
+    <a id="own" href="/hello/">Hello app</a>
+    <a id="allowed" href="https://example.com/page">Allowed</a>
+    <a id="blocked" href="https://blocked.test/page" data-preview-description="A described page">Blocked</a>
+    <a id="scheme" href="javascript:alert(1)">Bad scheme</a>
+  </main>`
+
+const tick = () => new Promise((r) => setTimeout(r, 0))
+
+function mountPreview(opts = {}) {
+  const p = page({ html: PREVIEW_PAGE, scripts: PREVIEW_SCRIPTS })
+  const pv = p.cubby.preview('main', { delay: 1, hideDelay: 5, allow: ['example.com'], ...opts })
+  const fire = (id, type) => {
+    const el = p.document.getElementById(id)
+    el.dispatchEvent(new p.window.Event(type, { bubbles: true }))
+    return el
+  }
+  return { p, pv, fire, pop: pv.popover }
+}
+
+await test('preview frames an allowlisted page and sets src only after layout', async () => {
+  const { p, fire, pop } = mountPreview()
+  fire('allowed', 'mouseover')
+  await new Promise((r) => setTimeout(r, 20))
+
+  assert.deepEqual(p.errors, [])
+  const frame = pop.querySelector('iframe')
+  assert.ok(frame, 'an allowlisted host gets a real frame')
+  assert.equal(frame.getAttribute('src'), 'https://example.com/page')
+  assert.equal(pop.hidden, false, 'the popover was laid out before src went on')
+  assert.equal(pop.querySelector('.cubby-preview-open').getAttribute('href'), 'https://example.com/page')
+})
+
+await test('a refused host renders a card naming it, never a blank box', async () => {
+  const { fire, pop } = mountPreview()
+  fire('blocked', 'mouseover')
+  await new Promise((r) => setTimeout(r, 20))
+
+  assert.equal(pop.querySelector('iframe'), null, 'no frame for an unmeasured host')
+  assert.ok(pop.querySelector('.cubby-preview-open'), 'but still an Open link')
+  assert.match(pop.querySelector('.cubby-preview-description').textContent, /A described page/)
+  // Rendering nothing would read as a broken feature rather than a page that
+  // will not embed.
+  assert.match(pop.querySelector('.cubby-preview-note').textContent, /blocked\.test does not allow embedding/)
+})
+
+await test('a refused scheme gets the card with no live link', async () => {
+  const { fire, pop } = mountPreview()
+  fire('scheme', 'mouseover')
+  await new Promise((r) => setTimeout(r, 20))
+  assert.equal(pop.querySelector('iframe'), null)
+  assert.equal(pop.querySelector('.cubby-preview-open'), null, 'nothing clickable for javascript:')
+  assert.match(pop.querySelector('.cubby-preview-note').textContent, /cannot be previewed/)
+})
+
+await test('the frame is sandboxed, and never scripts+same-origin together', async () => {
+  const strict = mountPreview()
+  strict.fire('allowed', 'mouseover')
+  await new Promise((r) => setTimeout(r, 20))
+  assert.equal(strict.pop.querySelector('iframe').getAttribute('sandbox'), '', 'sandbox="" by default')
+
+  const scripted = mountPreview({ scripts: true })
+  scripted.fire('allowed', 'mouseover')
+  await new Promise((r) => setTimeout(r, 20))
+  const sandbox = scripted.pop.querySelector('iframe').getAttribute('sandbox')
+  assert.equal(sandbox, 'allow-scripts')
+  // The pair lets a same-origin framed document remove its own sandbox.
+  assert.ok(!sandbox.includes('allow-same-origin'), 'never pair these two')
+})
+
+await test('the iframe carries no error listener, only a timeout path', () => {
+  // A blocked frame fires no error event and load may still run on the blocked
+  // shell, so an error listener would be dead code that implies a fallback
+  // exists. Assert the source never adds one.
+  const js = bundleSource('preview.js')
+  assert.ok(!/addEventListener\("error"/.test(js), 'no error listener on the frame')
+  assert.ok(/addEventListener\("load"/.test(js), 'load is the only listener')
+})
+
+await test('one shared timer: entering the popover cancels the pending close', async () => {
+  const { p, fire, pop } = mountPreview({ hideDelay: 30 })
+  fire('allowed', 'mouseover')
+  await new Promise((r) => setTimeout(r, 20))
+  assert.equal(pop.hidden, false)
+
+  fire('allowed', 'mouseout')                       // schedules the hide
+  pop.dispatchEvent(new p.window.Event('mouseenter')) // must clear THAT timer
+  await new Promise((r) => setTimeout(r, 60))
+
+  // If these were two separate timers nothing would cancel the close, and the
+  // Open link would be unreachable however fast you moved.
+  assert.equal(pop.hidden, false, 'the popover must survive the trip to the Open link')
+})
+
+await test('a stale close cannot kill a popover that has since opened elsewhere', async () => {
+  const { fire, pop } = mountPreview({ hideDelay: 30 })
+  fire('allowed', 'mouseover')
+  await new Promise((r) => setTimeout(r, 20))
+
+  fire('allowed', 'mouseout')          // schedules a hide owned by #allowed
+  fire('blocked', 'mouseover')         // takes ownership
+  await new Promise((r) => setTimeout(r, 60))
+
+  assert.equal(pop.hidden, false, 'the guarded close must not fire for a former owner')
+  assert.match(pop.querySelector('.cubby-preview-note').textContent, /blocked\.test/)
+})
+
+await test('hide() empties the popover, tearing the framed document down', async () => {
+  const { pv, fire, pop } = mountPreview({ unloadDelay: 5 })
+  fire('allowed', 'mouseover')
+  await new Promise((r) => setTimeout(r, 20))
+  assert.ok(pop.querySelector('iframe'))
+
+  pv.hide()
+  await new Promise((r) => setTimeout(r, 30))
+  // Merely hiding would leave a few hundred documents loaded on a page with a
+  // few hundred links.
+  assert.equal(pop.children.length, 0, 'the frame must actually be torn down')
+})
+
+await test('Escape and scroll dismiss; a scroll inside the popover does not', async () => {
+  const { p, pv, fire, pop } = mountPreview()
+
+  fire('allowed', 'mouseover')
+  await new Promise((r) => setTimeout(r, 20))
+  p.document.dispatchEvent(new p.window.Event('keydown', { bubbles: true }))
+  assert.equal(pop.hidden, false, 'a non-Escape key changes nothing')
+
+  const esc = new p.window.Event('keydown', { bubbles: true })
+  esc.key = 'Escape'
+  p.document.dispatchEvent(esc)
+  assert.equal(pop.hidden, true)
+
+  fire('allowed', 'mouseover')
+  await new Promise((r) => setTimeout(r, 20))
+  // Scrolling the description card must not dismiss the thing being read.
+  pop.dispatchEvent(new p.window.Event('scroll', { bubbles: true }))
+  assert.equal(pop.hidden, false, 'a scroll originating inside is exempt')
+
+  p.document.dispatchEvent(new p.window.Event('scroll', { bubbles: true }))
+  assert.equal(pop.hidden, true, 'a scroll anywhere else dismisses')
+})
+
+await test('a scroll from window does not throw on the contains() guard', async () => {
+  const { p, fire, pop } = mountPreview()
+  fire('allowed', 'mouseover')
+  await new Promise((r) => setTimeout(r, 20))
+  // Node.contains() throws a TypeError on anything that is not a Node, and
+  // window is a legitimate scroll target.
+  assert.doesNotThrow(() => p.window.dispatchEvent(new p.window.Event('scroll', { bubbles: true })))
+  assert.deepEqual(p.errors, [])
+})
+
+await test('the dwell delay applies to focus as well as hover', async () => {
+  const { p, pop } = mountPreview({ delay: 40 })
+  const el = p.document.getElementById('allowed')
+  el.dispatchEvent(new p.window.Event('focusin', { bubbles: true }))
+  // Opening instantly on focus fires a document load at every tab stop
+  // through a list.
+  assert.equal(pop.hidden, true, 'not opened yet')
+  await new Promise((r) => setTimeout(r, 70))
+  assert.equal(pop.hidden, false)
+})
+
+await test('preview is suppressed on hover-less and narrow viewports', () => {
+  const { p } = mountPreview()
+  const css = [...p.document.head.querySelectorAll('style[data-cubby-preview]')]
+    .map((s) => s.textContent)
+    .join('')
+  // A tap on a wide touch device can move focus and open a popover with no
+  // pointer to dismiss it.
+  assert.match(css, /@media \(hover: none\), \(max-width: 40rem\)/)
+})
+
+await test('preview classes are prefixed so they cannot restyle a host', () => {
+  const { p } = mountPreview()
+  const css = [...p.document.head.querySelectorAll('style[data-cubby-preview]')]
+    .map((s) => s.textContent)
+    .join('')
+  const classes = [...css.matchAll(/\.([a-z][a-z0-9-]*)/g)].map((m) => m[1])
+  const unprefixed = [...new Set(classes)].filter((c) => !c.startsWith('cubby-preview'))
+  assert.deepEqual(unprefixed, [], `a generic class would restyle a host page: ${unprefixed}`)
+})
+
+await test('attach() wires a link outside the root and returns a disposer', async () => {
+  const { p, pv, pop } = mountPreview()
+  const outside = p.document.createElement('a')
+  outside.href = 'https://example.com/other'
+  outside.textContent = 'Outside'
+  p.document.body.appendChild(outside)
+
+  // Attached triggers take mouseenter/mouseleave, which do NOT bubble --
+  // the opposite of the delegated pair.
+  const dispose = pv.attach(outside)
+  outside.dispatchEvent(new p.window.Event('mouseenter'))
+  await new Promise((r) => setTimeout(r, 20))
+  assert.equal(pop.hidden, false)
+  pv.hide()
+
+  dispose()
+  outside.dispatchEvent(new p.window.Event('mouseenter'))
+  await new Promise((r) => setTimeout(r, 20))
+  assert.equal(pop.hidden, true, 'the disposer really detaches')
+})
+
+await test('preview.destroy removes the popover and its listeners', async () => {
+  const { p, pv, fire, pop } = mountPreview()
+  fire('allowed', 'mouseover')
+  await new Promise((r) => setTimeout(r, 20))
+
+  pv.destroy()
+  assert.equal(pop.isConnected, false)
+  assert.equal(p.document.querySelector('.cubby-preview'), null)
 })
 
 // --- style injection --------------------------------------------------------

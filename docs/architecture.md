@@ -226,6 +226,61 @@ signed-out pastes error with `auth_required` and insert nothing. Image
 types: png/jpeg/gif/webp (SVG is excluded: PocketBase serves files with
 their declared content type, and SVG can script on the instance origin).
 
+## Preview: cubby.preview (opt-in)
+
+Hover a link, see the page. Core only — no backend.
+
+```html
+<script src="/js/core.js" defer></script>
+<script src="/js/preview.js" defer></script>
+```
+
+```js
+const pv = cubby.preview(document.body, {
+  selector: 'a[href]',   // which links to delegate to
+  delay: 900,            // dwell before opening; applies to focus too
+  scripts: false,        // true relaxes sandbox to allow-scripts
+  allow: ['.example.com'],  // defaults to cubby.config.preview.frameable
+})
+pv.attach(el)   // wire a link outside the root; returns a disposer
+pv.popover      // the popover element (handle.element is the mount target)
+pv.hide(); pv.destroy()
+```
+
+**The constraint everything follows from: a frame blocked by
+`X-Frame-Options` or a `frame-ancestors` CSP cannot be detected from
+JavaScript.** No error event fires, and `load` may still run on the blocked
+shell — so "try the iframe and fall back if it fails" is not implementable.
+The fallback would never trigger and the reader would sit looking at a blank
+box.
+
+So framing is an **allowlist of hosts whose headers were actually measured**,
+in `cubby.config.json` under `preview.frameable`. It is a measurement, not a
+preference. Adding a host means checking it first:
+
+```sh
+curl -sI https://example.com/ | grep -iE 'x-frame-options|frame-ancestors'
+```
+
+and following any 301/302, since a redirect tells you nothing about the page
+you would land on. Record the date you checked; headers change.
+
+- Same-origin is always frameable and never needs listing.
+- A leading dot means "subdomain of, at any depth" (`.example.com` admits
+  `example.com` and `a.b.example.com`); no dot is an exact host.
+- Both forms are asserted against hostile controls — `evilexample.com` and
+  `x.example.com.evil.com` — in `scripts/core-tests.mjs`. A suffix rule that
+  admits either passes every positive test while being useless.
+
+A refused host still gets a card: title, Open link, description, and a note
+naming the host that refused. Rendering nothing reads as a broken feature
+rather than as a page that will not embed.
+
+Frames are `sandbox=""` by default, and `allow-same-origin` is never paired
+with `allow-scripts` — together they let a same-origin framed document remove
+its own sandbox. There is deliberately **no `error` listener** on the iframe;
+the only failure path is a timeout that recolours the loading overlay.
+
 ## Nav: cubby.nav (opt-in)
 
 A sticky two-row site bar. Core only — no backend.
