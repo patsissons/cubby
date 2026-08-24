@@ -228,3 +228,11 @@ table.modules td:nth-child(2) {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+
+kbd {
+  padding: 0.1em 0.35em;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--code-bg);
+  font: 0.85em/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}

@@ -175,6 +175,11 @@ export function createNav() {
     function measure() {
       const height = root.getBoundingClientRect().height
       doc.documentElement.style.setProperty(HEIGHT_PROPERTY, `${Math.round(height)}px`)
+      // The bar is position: fixed, so it occupies no space in normal flow and
+      // the page would start underneath it. Reserve exactly its height on the
+      // mount element instead of pushing a body padding rule onto the host --
+      // the widget owns its own mount point, and the host keeps its layout.
+      if (height) mount.style.height = `${Math.round(height)}px`
       return height
     }
 
@@ -187,6 +192,7 @@ export function createNav() {
       observe(discover())
     })
     ctx.own(() => doc.documentElement.style.removeProperty(HEIGHT_PROPERTY))
+    ctx.own(() => mount.style.removeProperty('height'))
 
     return {
       /**

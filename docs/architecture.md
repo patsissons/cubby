@@ -460,6 +460,17 @@ resize; the two global rules it leaks (`scroll-margin-top` on ids and
 `:target`, and smooth scrolling under `prefers-reduced-motion: no-preference`)
 read that property, so they cannot disagree with the bar's real height.
 
+The bar is `position: fixed`, **not sticky**. Sticky only sticks while its
+containing block is in view, and the mount point is a bare element exactly the
+bar's height — so it scrolled out of view immediately and took the bar with it.
+Being fixed means it occupies no space in normal flow, so the widget sets its
+own mount element's height from the same measurement rather than pushing a body
+padding rule onto the host; `destroy()` puts it back. The translucent
+backdrop-blur background is applied only inside an `@supports` guard: a browser
+without `backdrop-filter` rendering a see-through bar would have page content
+legible straight through the labels, and an opaque bar is the correct
+degradation.
+
 `current().actions` is the pinned action area — other widgets mount their
 triggers there without the bar having to know about them.
 

@@ -1,10 +1,30 @@
 export const STYLES = `
+/* FIXED, not sticky. A sticky element only sticks while its containing block
+   is in view, and the mount point is a bare element whose height is exactly the
+   bar's -- so it scrolled out of view immediately and took the bar with it.
+   Fixed sidesteps the containing block entirely; the widget reserves the space
+   it no longer occupies by setting the mount element's height from its own
+   measurement, rather than leaking a third global rule onto the host. */
 .cubby-nav {
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
   z-index: 40;
   background: var(--bg, #faf8f5);
   border-bottom: 1px solid var(--border, #e7e2da);
+}
+
+/* The translucent background is applied ONLY where the blur actually works.
+   Without the guard, a browser lacking backdrop-filter renders a see-through
+   bar with page content legible straight through the labels; an opaque bar is
+   the correct degradation. */
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .cubby-nav {
+    background: color-mix(in srgb, var(--bg, #faf8f5) 72%, transparent);
+    -webkit-backdrop-filter: blur(10px) saturate(1.4);
+    backdrop-filter: blur(10px) saturate(1.4);
+  }
 }
 .cubby-nav-row {
   display: flex;

@@ -259,6 +259,54 @@ await test('the active section never clears when nothing is in the band', () => 
   assert.equal(nav.current().section, 'usage')
 })
 
+await test('the bar is fixed, not sticky', () => {
+  const { p } = mountNav()
+  const css = [...p.document.head.querySelectorAll('style[data-cubby-nav]')].map((s) => s.textContent).join('')
+  // sticky only sticks while its CONTAINING BLOCK is in view, and the mount
+  // point is a bare element exactly the bar's height -- so it scrolled away
+  // immediately, taking the bar with it.
+  assert.match(css, /\.cubby-nav\s*\{[^}]*position:\s*fixed/)
+  assert.doesNotMatch(css, /\.cubby-nav\s*\{[^}]*position:\s*sticky/)
+})
+
+await test('the blur is applied only where it is supported', () => {
+  const { p } = mountNav()
+  const css = [...p.document.head.querySelectorAll('style[data-cubby-nav]')].map((s) => s.textContent).join('')
+  const base = css.match(/\.cubby-nav\s*\{[^}]*\}/)[0]
+  // Opaque by default. A browser without backdrop-filter rendering a
+  // translucent bar would have page content legible through the labels.
+  assert.match(base, /background:\s*var\(--bg/)
+  assert.doesNotMatch(base, /backdrop-filter/)
+
+  const supports = css.slice(css.indexOf('@supports'), css.indexOf('{', css.indexOf('@supports')))
+  assert.match(supports, /backdrop-filter: blur/)
+  assert.match(supports, /-webkit-backdrop-filter: blur/, 'Safari is behind the prefix in the query too')
+  const guarded = css.slice(css.indexOf('@supports'))
+  assert.match(guarded, /backdrop-filter:\s*blur/)
+  assert.match(guarded, /-webkit-backdrop-filter:\s*blur/, 'Safari needs the prefix')
+  assert.match(guarded, /color-mix\(in srgb, var\(--bg/, 'translucent only inside the guard')
+})
+
+await test('a fixed bar reserves its own height at the mount point', () => {
+  const p = page({ html: NAV_PAGE, scripts: NAV_SCRIPTS })
+  // jsdom reports every rect as zero, so give the bar a height to measure.
+  const realRect = p.window.Element.prototype.getBoundingClientRect
+  p.window.Element.prototype.getBoundingClientRect = function () {
+    return this.classList?.contains('cubby-nav') ? { ...realRect.call(this), height: 96 } : realRect.call(this)
+  }
+  const bar = p.cubby.nav('#bar', {})
+  const mount = p.document.getElementById('bar')
+
+  // Fixed elements occupy no space in normal flow, so without this the page
+  // starts underneath the bar. Reserving it on the mount keeps the fix inside
+  // the widget instead of pushing a body padding rule onto the host.
+  assert.equal(mount.style.height, '96px')
+  assert.equal(p.document.documentElement.style.getPropertyValue('--cubby-nav-height'), '96px')
+
+  bar.destroy()
+  assert.equal(mount.style.height, '', 'and the host gets its layout back')
+})
+
 await test('nav publishes its measured height as a custom property', () => {
   const { p, nav } = mountNav()
   const prop = p.document.documentElement.style.getPropertyValue('--cubby-nav-height')

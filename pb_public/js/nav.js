@@ -1,11 +1,31 @@
 /* cubby nav v0.1.0 (https://github.com/patsissons/cubby) */
-(()=>{var i=typeof window<"u"&&window.cubby||null,B=i?.CubbyError,H=i?.toCubbyError,M=i?.escapeHtml,Y=i?.sanitizeUrl,x=i?.injectStyle,k=i?.ensureTokens,T=i?.widget;function L(r,...s){let o=[];i?.CubbyError||o.push("core.js");for(let t of s)i?.[t]||o.push(`${t}.js`);return o.length?(console.error(`[cubby] ${r} needs ${o.join(" + ")} loaded first. Tag order is core.js, platform.js, markdown.js, editor.js, then your app.js \u2014 all defer.`),null):i}var $=`
+(()=>{var i=typeof window<"u"&&window.cubby||null,M=i?.CubbyError,Y=i?.toCubbyError,B=i?.escapeHtml,F=i?.sanitizeUrl,x=i?.injectStyle,T=i?.ensureTokens,j=i?.widget;function L(n,...l){let o=[];i?.CubbyError||o.push("core.js");for(let t of l)i?.[t]||o.push(`${t}.js`);return o.length?(console.error(`[cubby] ${n} needs ${o.join(" + ")} loaded first. Tag order is core.js, platform.js, markdown.js, editor.js, then your app.js \u2014 all defer.`),null):i}var $=`
+/* FIXED, not sticky. A sticky element only sticks while its containing block
+   is in view, and the mount point is a bare element whose height is exactly the
+   bar's -- so it scrolled out of view immediately and took the bar with it.
+   Fixed sidesteps the containing block entirely; the widget reserves the space
+   it no longer occupies by setting the mount element's height from its own
+   measurement, rather than leaking a third global rule onto the host. */
 .cubby-nav {
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
   z-index: 40;
   background: var(--bg, #faf8f5);
   border-bottom: 1px solid var(--border, #e7e2da);
+}
+
+/* The translucent background is applied ONLY where the blur actually works.
+   Without the guard, a browser lacking backdrop-filter renders a see-through
+   bar with page content legible straight through the labels; an opaque bar is
+   the correct degradation. */
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .cubby-nav {
+    background: color-mix(in srgb, var(--bg, #faf8f5) 72%, transparent);
+    -webkit-backdrop-filter: blur(10px) saturate(1.4);
+    backdrop-filter: blur(10px) saturate(1.4);
+  }
 }
 .cubby-nav-row {
   display: flex;
@@ -65,10 +85,10 @@
   outline-offset: -2px;
   border-radius: 4px;
 }
-`,z=`
+`,O=`
 :target,
 [id] { scroll-margin-top: calc(var(--cubby-nav-height, 0px) + 0.75rem); }
 @media (prefers-reduced-motion: no-preference) {
   html { scroll-behavior: smooth; }
 }
-`;var E="--cubby-nav-height";function O(r){let s;try{s=new URL(r,"https://x.invalid/").pathname}catch{return null}return s.replace(/index\.html?$/,"").replace(/\/*$/,"/")}function R(){return T("nav",(r,s,o={})=>{let t=s.ownerDocument,f=t.defaultView;k(),x("nav",$),o.globalRules!==!1&&x("nav-global",z);let l=t.createElement("nav");l.className="cubby-nav",l.setAttribute("aria-label",o.label||"Site");let v=t.createElement("div");v.className="cubby-nav-row cubby-nav-pages";let g=t.createElement("div");g.className="cubby-nav-scroll";let m=t.createElement("div");m.className="cubby-nav-actions";let C=O(f.location.href);for(let e of o.pages||[]){let n=t.createElement("a");n.className="cubby-nav-pill",n.href=e.href,n.textContent=e.label,O(e.href)===C&&n.setAttribute("aria-current","page"),g.appendChild(n)}v.append(g,m),l.appendChild(v);let h=t.createElement("div");h.className="cubby-nav-row cubby-nav-sections";let y=t.createElement("div");y.className="cubby-nav-scroll",h.appendChild(y),l.appendChild(h),s.replaceChildren(l),r.own(()=>l.remove());let u=new Map,d=null,c=null;function I(){let e=o.sections;return e?typeof e=="string"?t.querySelector(e):e:t.querySelector("main")||t.body}function S(){let e=I();return e?[...e.querySelectorAll("[aria-labelledby]")].map(n=>{let b=n.getAttribute("aria-labelledby"),a=b&&t.getElementById(b);if(!a||n.hidden||n.closest("[hidden]"))return null;let p=n.getAttribute("data-nav-label")||a.textContent.trim();return{id:b,section:n,label:p}}).filter(Boolean):[]}function P(e){e!==c&&(c&&u.get(c)?.removeAttribute("aria-current"),c=e,u.get(e)?.setAttribute("aria-current","true"))}function A(){d?.disconnect(),u=new Map,y.replaceChildren();let e=S();h.hidden=e.length===0;for(let{id:n,label:b}of e){let a=t.createElement("a");a.className="cubby-nav-pill",a.href=`#${n}`,a.textContent=b,y.appendChild(a),u.set(n,a)}c&&!u.has(c)&&(c=null),w(),N(e)}function N(e){if(!e.length||typeof f.IntersectionObserver!="function")return;let n=q(),[b,a]=o.band||[n+8,70];d=new f.IntersectionObserver(p=>{for(let j of p)j.isIntersecting&&P(j.target.getAttribute("aria-labelledby"))},{rootMargin:`-${b}px 0px -${a}% 0px`}),r.own(()=>d?.disconnect());for(let{section:p}of e)d.observe(p)}function q(){let e=t.documentElement.style.getPropertyValue(E);return parseFloat(e)||0}function w(){let e=l.getBoundingClientRect().height;return t.documentElement.style.setProperty(E,`${Math.round(e)}px`),e}return A(),r.on(f,"resize",()=>{w(),d?.disconnect(),N(S())}),r.own(()=>t.documentElement.style.removeProperty(E)),{current(){return{page:C,section:c,actions:m}},refresh:A,height:w,root:l,actions:m}})}if(typeof window<"u"){let r=L("nav.js");r&&(r.nav=R(r))}})();
+`;var k="--cubby-nav-height";function z(n){let l;try{l=new URL(n,"https://x.invalid/").pathname}catch{return null}return l.replace(/index\.html?$/,"").replace(/\/*$/,"/")}function I(){return j("nav",(n,l,o={})=>{let t=l.ownerDocument,h=t.defaultView;T(),x("nav",$),o.globalRules!==!1&&x("nav-global",O);let s=t.createElement("nav");s.className="cubby-nav",s.setAttribute("aria-label",o.label||"Site");let y=t.createElement("div");y.className="cubby-nav-row cubby-nav-pages";let v=t.createElement("div");v.className="cubby-nav-scroll";let f=t.createElement("div");f.className="cubby-nav-actions";let E=z(h.location.href);for(let e of o.pages||[]){let r=t.createElement("a");r.className="cubby-nav-pill",r.href=e.href,r.textContent=e.label,z(e.href)===E&&r.setAttribute("aria-current","page"),v.appendChild(r)}y.append(v,f),s.appendChild(y);let g=t.createElement("div");g.className="cubby-nav-row cubby-nav-sections";let m=t.createElement("div");m.className="cubby-nav-scroll",g.appendChild(m),s.appendChild(g),l.replaceChildren(s),n.own(()=>s.remove());let u=new Map,d=null,c=null;function P(){let e=o.sections;return e?typeof e=="string"?t.querySelector(e):e:t.querySelector("main")||t.body}function C(){let e=P();return e?[...e.querySelectorAll("[aria-labelledby]")].map(r=>{let b=r.getAttribute("aria-labelledby"),a=b&&t.getElementById(b);if(!a||r.hidden||r.closest("[hidden]"))return null;let p=r.getAttribute("data-nav-label")||a.textContent.trim();return{id:b,section:r,label:p}}).filter(Boolean):[]}function R(e){e!==c&&(c&&u.get(c)?.removeAttribute("aria-current"),c=e,u.get(e)?.setAttribute("aria-current","true"))}function S(){d?.disconnect(),u=new Map,m.replaceChildren();let e=C();g.hidden=e.length===0;for(let{id:r,label:b}of e){let a=t.createElement("a");a.className="cubby-nav-pill",a.href=`#${r}`,a.textContent=b,m.appendChild(a),u.set(r,a)}c&&!u.has(c)&&(c=null),w(),A(e)}function A(e){if(!e.length||typeof h.IntersectionObserver!="function")return;let r=q(),[b,a]=o.band||[r+8,70];d=new h.IntersectionObserver(p=>{for(let N of p)N.isIntersecting&&R(N.target.getAttribute("aria-labelledby"))},{rootMargin:`-${b}px 0px -${a}% 0px`}),n.own(()=>d?.disconnect());for(let{section:p}of e)d.observe(p)}function q(){let e=t.documentElement.style.getPropertyValue(k);return parseFloat(e)||0}function w(){let e=s.getBoundingClientRect().height;return t.documentElement.style.setProperty(k,`${Math.round(e)}px`),e&&(l.style.height=`${Math.round(e)}px`),e}return S(),n.on(h,"resize",()=>{w(),d?.disconnect(),A(C())}),n.own(()=>t.documentElement.style.removeProperty(k)),n.own(()=>l.style.removeProperty("height")),{current(){return{page:E,section:c,actions:f}},refresh:S,height:w,root:s,actions:f}})}if(typeof window<"u"){let n=L("nav.js");n&&(n.nav=I(n))}})();

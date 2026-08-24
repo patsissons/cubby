@@ -17,10 +17,10 @@
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="stylesheet" href="/css/tokens.css?v=9d78fd37" data-cubby-tokens />
-    <link rel="stylesheet" href="style.css?v=802e052b" />
+    <link rel="stylesheet" href="style.css?v=58c7208f" />
     <script src="/js/core.js?v=f32adb29" defer></script>
     <script src="/js/platform.js?v=b1f620e0" defer></script>
-    <script src="/js/nav.js?v=a71f82e8" defer></script>
+    <script src="/js/nav.js?v=6b78d76d" defer></script>
     <script src="/js/draw.js?v=4890fa2b" defer></script>
     <script src="/js/graph.js?v=4a9d4a16" defer></script>
     <script src="/js/preview.js?v=e3d8c254" defer></script>
@@ -270,6 +270,41 @@ ed.value                               // get/set the markdown</code></pre>
           </p>
         </section>
 
+        <section aria-labelledby="editor" data-nav-label="editor">
+          <h3 id="editor">cubby.editor</h3>
+          <p>
+            A markdown textarea with a live preview and paste-image upload. Needs
+            <code>markdown.js</code> before it; the platform is optional, and without one this is
+            a plain composer with a working preview and upload silently off.
+          </p>
+          <pre><code>&lt;script src="/js/core.js" defer&gt;&lt;/script&gt;
+&lt;script src="/js/markdown.js" defer&gt;&lt;/script&gt;
+&lt;script src="/js/editor.js" defer&gt;&lt;/script&gt;</code></pre>
+          <pre><code>const ed = cubby.editor('#editor', {
+  value: '',
+  preview: true,                       // Write|Preview tabs; 'split' = live pane; false = none
+  upload: { pathPrefix: 'uploads/' },  // or false
+  onChange(value) {}, onUpload({ name, path, url }) {}, onError(err) {},
+})
+ed.value          // live accessor
+ed.setValue(md)
+ed.images         // [{ name, path, url }] uploaded through this editor
+ed.element; ed.preview; ed.textarea
+ed.focus(); ed.refresh(); ed.destroy()</code></pre>
+          <p>
+            The preview renders through <strong>the same renderer</strong> the app uses for the
+            saved value — <code>cubby.markdown.render</code>, read off the namespace at call time
+            rather than bundled, so there is exactly one renderer on the page. What you see while
+            typing is not an approximation of what gets stored.
+          </p>
+          <p>
+            A pasted image goes in as an <code>![Uploading…]()</code> placeholder at the caret and
+            is swapped for the real link when the upload lands, so the note keeps its shape while
+            bytes are in flight. The stored path is built server-side from the user id and a
+            token, so two pastes of the same <code>image.png</code> cannot collide.
+          </p>
+        </section>
+
         <section aria-labelledby="ai" data-nav-label="ai">
           <h3 id="ai">cubby.ai</h3>
           <p>
@@ -329,6 +364,149 @@ await room.leave()</code></pre>
             User names resolve for signed-in viewers only (profiles are auth-gated): render
             <code>user.name || 'someone'</code>. The presence pill in the corner of this page is
             <code>cubby.rooms</code> live.
+          </p>
+        </section>
+
+        <section aria-labelledby="nav" data-nav-label="nav">
+          <h3 id="nav">cubby.nav</h3>
+          <p>
+            The sticky bar at the top of this page. Core only — no backend. Row one is the pages
+            you declare plus a pinned action area that never scrolls; row two is the current
+            page's sections.
+          </p>
+          <pre><code>const bar = cubby.nav('#sitebar', {
+  pages: [{ href: '/', label: 'Home' }, { href: '/docs/', label: 'Docs' }],
+  sections: 'main',      // where to look (default: main, then body)
+  globalRules: true,     // false to own scroll-margin-top / scroll-behavior yourself
+})
+bar.current()   // { page, section, actions } — actions is the pinned slot
+bar.refresh()   // re-derive row two after rendering sections with JS
+bar.destroy()</code></pre>
+          <p>
+            <strong>Row two is derived from the DOM, not declared.</strong> A section opts in by
+            carrying <code>aria-labelledby</code> pointing at its own heading id:
+          </p>
+          <pre><code>&lt;section aria-labelledby="usage" data-nav-label="Usage"&gt;
+  &lt;h2 id="usage"&gt;Using the thing&lt;/h2&gt;
+&lt;/section&gt;</code></pre>
+          <p>
+            That single id is the accessible name, the jump target <em>and</em> the nav label, so a
+            nav entry pointing at a section that no longer exists is unrepresentable rather than
+            merely unlikely. <code>data-nav-label</code> overrides a heading too long for a bar, and
+            sections marked <code>hidden</code> are skipped — an entry that scrolls nowhere and
+            never highlights reads as broken.
+          </p>
+          <p>
+            The bar is <code>position: fixed</code> and reserves its own height on its mount
+            element, so the page never starts underneath it. It measures itself once, publishes
+            that as <code>--cubby-nav-height</code>, and re-measures on resize; the two global
+            rules it leaks — <code>scroll-margin-top</code> on ids and <code>:target</code>, and
+            smooth scrolling under <code>prefers-reduced-motion: no-preference</code> — read that
+            property, so they cannot disagree with the bar's real height.
+            <code>current().actions</code> is the pinned slot other widgets mount into.
+          </p>
+        </section>
+
+        <section aria-labelledby="preview" data-nav-label="preview">
+          <h3 id="preview">cubby.preview</h3>
+          <p>
+            Hover a link, see the page. Core only. Delegated by default, so links rendered later
+            need no re-wiring.
+          </p>
+          <pre><code>const pv = cubby.preview(document.body, {
+  selector: 'a[href]:not([href^="#"])',
+  delay: 900,          // dwell before opening; applies to focus too
+  scripts: false,      // true relaxes sandbox to allow-scripts
+  allow: ['.example.com'],   // defaults to cubby.config.preview.frameable
+})
+pv.attach(el)   // wire a link outside the root; returns a disposer
+pv.popover; pv.hide(); pv.destroy()</code></pre>
+          <p>
+            <strong>A frame blocked by <code>X-Frame-Options</code> or a
+            <code>frame-ancestors</code> CSP cannot be detected from JavaScript.</strong> No error
+            event fires, and <code>load</code> may still run on the blocked shell — so "try the
+            iframe and fall back" is not implementable, and a reader would sit looking at a blank
+            box. Framing is therefore an allowlist of hosts whose headers were actually
+            <em>measured</em>, in <code>cubby.config.json</code>:
+          </p>
+          <pre><code>curl -sI https://example.com/ | grep -iE 'x-frame-options|frame-ancestors'</code></pre>
+          <p>
+            Follow any redirect — it tells you nothing about the page you would land on — and
+            record the date, because headers change. Same-origin is always frameable and never
+            needs listing. A leading dot means "subdomain at any depth"; no dot is an exact host.
+            A host that refuses still gets a card naming it: rendering nothing reads as a broken
+            feature rather than as a page that will not embed. Frames are <code>sandbox=""</code>
+            by default, and <code>allow-same-origin</code> is never paired with
+            <code>allow-scripts</code> — together they let a framed document remove its own
+            sandbox. See the <a href="/hello/#previews">live examples on Hello</a>.
+          </p>
+        </section>
+
+        <section aria-labelledby="draw" data-nav-label="draw">
+          <h3 id="draw">cubby.draw</h3>
+          <p>
+            Ephemeral shared cursors and freehand marks — hold <kbd>Alt</kbd> on this page and
+            scribble. Uses <code>cubby.rooms</code> when the platform is loaded and degrades to a
+            private highlighter when it is not.
+          </p>
+          <pre><code>cubby.draw('main', {
+  room: 'draw/page',   // default: one room per page
+  modifier: 'alt',     // alt | ctrl | meta | shift
+  cursors: false,      // broadcast your pointer to peers
+  segmentMs: 800, fadeMs: 5000, strokeWidth: 3, opacity: 0.42,
+})</code></pre>
+          <p>
+            A stroke is captured locally as a vector, simplified, and sent as <strong>whole paths
+            — one event per time-boxed segment</strong> rather than as a stream of points.
+            <code>rooms.emit()</code> writes a database row per call, so a 50ms point stream would
+            be ~20 rows/sec per drawer; one path per ~800ms is roughly 1/sec. Segments flush on a
+            timer as well as on release, so a peer's lag is bounded by the segment rather than by
+            how long you keep drawing, and each carries its duration so the receiver replays it at
+            the speed it was drawn.
+          </p>
+          <p>
+            <strong>The local puck always shows</strong>, even with no backend; broadcasting your
+            cursor to peers is off by default, because every sample is a presence write and an SSE
+            fan-out. Sharing needs sign-in. Nothing is persisted in any way that is ever read
+            back: clients subscribe to <em>create</em> only, so a late joiner sees nothing and a
+            refresh clears the page.
+          </p>
+        </section>
+
+        <section aria-labelledby="graph" data-nav-label="graph">
+          <h3 id="graph">cubby.graph</h3>
+          <p>
+            Node-and-edge diagrams in inline SVG — <a href="#flow">the one above</a> is built with
+            it. Core only, zero dependencies: no d3, no mermaid, no canvas, because a
+            static-files-only site cannot afford a renderer script.
+          </p>
+          <pre><code>cubby.graph('#diagram', {
+  lanes: [{ id: 'browser', label: 'Browser' }],
+  nodes: [{ id: 'app', lane: 'browser', column: 1, label: 'app.js', note: 'markdown **note**' }],
+  edges: [{ id: 'e1', from: 'app', to: 'api', kind: 'http', label: 'REST' }],
+  journeys: [{ id: 'load', label: 'Load a page', hue: 205, edges: ['e1'] }],
+  kinds: { http: { hue: 205, dash: '' }, data: { hue: 145, dash: '7 4' } },
+})</code></pre>
+          <p>
+            <strong>Declarative data with no coordinates.</strong> Lanes give y,
+            <code>column</code> gives x, and one pass computes the rest. There is no force
+            simulation: a diagram that rearranges itself between visits cannot be referred to in
+            prose. <code>column</code> is 1-based and unique within a lane, which makes layout a
+            direct mapping rather than a packing problem.
+          </p>
+          <p>
+            <strong>A journey is a list of edge ids, never node ids.</strong> It can then only
+            describe hops that were actually declared, and "every node no journey touches" becomes
+            derived instead of maintained — the two cannot disagree. A node no journey touches
+            falls back to its own edges when highlighted, or hovering it would dim everything and
+            highlight nothing.
+          </p>
+          <p>
+            Plain wheel scrolls the page; only ⌘/Ctrl + wheel zooms. Everything reachable by hover
+            is reachable by focus with the same highlight, and every journey is written out as
+            prose beneath the canvas — the drawing is never the only copy. Edge kinds differ by
+            dash as well as hue, so the diagram survives greyscale printing and colour vision
+            differences.
           </p>
         </section>
 
