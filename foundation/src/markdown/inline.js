@@ -1,4 +1,4 @@
-import { escapeHtml, sanitizeUrl } from './sanitize.js'
+import { escapeHtml, sanitizeUrl } from '#core'
 
 /**
  * Inline markdown: a single left-to-right scanner producing a node list,

@@ -15,10 +15,14 @@
       "gpt": { "provider": "openai", "id": "gpt-5.6-sol" }
     }
   },
+  "preview": {
+    "frameable": []
+  },
   "reservedNames": [
     "api",
     "_",
     "js",
+    "css",
     "_template",
     "index.html",
     "sites.json",

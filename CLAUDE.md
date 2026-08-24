@@ -1,10 +1,15 @@
 # cubby
 
 One repo, one PocketHost (PocketBase) instance, many tiny static web apps:
-each lives in pb_public/<name>/, is served at /<name>/, and gets database,
-file storage, OAuth identity, AI chat, and rooms from the global `cubby`
-object loaded via /js/foundation.js (plus markdown rendering/editing via
-the opt-in /js/markdown.js, which adds `cubby.markdown`). The forkability rule governs every
+each lives in pb_public/<name>/, is served at /<name>/, and builds on the
+global `cubby` object. cubby ships in layers, and tag order IS the dependency
+declaration (defer, document order, no ready event): /js/core.js first (the
+namespace, CubbyError, escaping, widget lifecycle, design tokens -- no
+PocketBase), then /js/platform.js for database, file storage, OAuth identity,
+AI chat and rooms, then any opt-in module such as /js/markdown.js, then the
+app's own script. An app loads only what it uses; a page needing no backend
+skips platform.js entirely. /js/foundation.js is the deprecated all-in-one and
+must keep building. The forkability rule governs every
 change: all deployment-specific state lives in cubby.config.json and app
 directories (plus their app migrations); platform files are never edited in
 deployment repos, so upstream merges stay clean.

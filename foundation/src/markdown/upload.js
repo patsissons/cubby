@@ -1,4 +1,4 @@
-import { CubbyError, toCubbyError } from '../errors.js'
+import { CubbyError, toCubbyError } from '#core'
 
 /**
  * Paste/drop image upload for a textarea, GitHub PR editor style: an
@@ -39,6 +39,10 @@ export function createAttachImageUpload(cubby) {
     const maxBytes = opts.maxBytes || 10 * 1024 * 1024
     const onUploadStart = opts.onUploadStart || (() => {})
     const onUpload = opts.onUpload || (() => {})
+    // A genuine upload failure with no handler still logs -- that is a real
+    // error a developer needs to see. What must never log is the ABSENCE of a
+    // platform, and that case never reaches here: the editor does not wire
+    // uploads at all without one.
     const onError = opts.onError || ((err) => console.error('[cubby] image upload failed:', err))
 
     // setRangeText keeps the browser undo stack (assigning .value would
@@ -62,7 +66,7 @@ export function createAttachImageUpload(cubby) {
     }
 
     async function upload(file) {
-      const user = cubby.identity.user
+      const user = cubby.identity?.user
       if (!user) {
         onError(new CubbyError('auth_required', 'sign in to upload images'))
         return

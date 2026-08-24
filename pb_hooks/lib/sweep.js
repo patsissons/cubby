@@ -3,8 +3,16 @@
 // user.leave to subscribed clients.
 
 const PRESENCE_TTL_MS = 60 * 1000
-const EVENTS_TTL_MS = 10 * 60 * 1000
-const BATCH = 200
+// Events are a broadcast bus, not a log: nothing ever reads them back (clients
+// subscribe to create only, so a late joiner sees nothing). Two minutes is
+// generous headroom over any in-flight delivery.
+const EVENTS_TTL_MS = 2 * 60 * 1000
+// The cron runs once a minute, so BATCH is a deletion RATE: 1000/min is ~16/s.
+// /js/draw.js sends one event per time-boxed stroke segment, roughly 1/s per
+// person actively drawing, so this carries a dozen simultaneous drawers with
+// room to spare. At the old 200 it was ~3/s and three drawers outran it, after
+// which the table grows without bound.
+const BATCH = 1000
 
 /** Format a cutoff as PB's stored UTC date format (space separator). */
 function cutoff(msAgo) {

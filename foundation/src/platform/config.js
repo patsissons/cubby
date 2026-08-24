@@ -1,7 +1,4 @@
-import { CubbyError } from './errors.js'
-
-/** The global namespace the foundation is exposed under. */
-export const FOUNDATION_NAMESPACE = 'cubby'
+import { CubbyError } from '#core'
 
 /** Fallback used when /cubby.config.json cannot be fetched (e.g. bare local server). */
 const DEFAULT_CONFIG = {
@@ -11,6 +8,9 @@ const DEFAULT_CONFIG = {
   instanceUrl: '',
   oauthProviders: [],
   ai: { defaultModel: '', models: {} },
+  // Hosts whose framing headers were actually measured; see
+  // foundation/src/preview/frameable.js. Same-origin never needs listing.
+  preview: { frameable: [] },
   reservedNames: [],
 }
 

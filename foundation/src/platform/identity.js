@@ -1,4 +1,4 @@
-import { CubbyError, toCubbyError } from './errors.js'
+import { CubbyError, toCubbyError } from '#core'
 
 /**
  * OAuth2-only identity. Login state is stored in the PB SDK's localStorage

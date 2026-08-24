@@ -1,4 +1,4 @@
-import { CubbyError, toCubbyError } from './errors.js'
+import { CubbyError, toCubbyError } from '#core'
 
 const HEARTBEAT_MS = 20000
 

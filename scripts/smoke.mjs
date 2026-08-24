@@ -1,11 +1,11 @@
-// Foundation smoke test. Runs the built ESM bundle in Node against a live
+// Platform smoke test. Runs the built ESM bundles in Node against a live
 // instance (local dev server by default), using superuser impersonation to
 // obtain an authenticated test user without OAuth.
 //
 //   npm run dev            # in another terminal
 //   node scripts/smoke.mjs
 //
-// Env: SMOKE_URL (default http://127.0.0.1:8091), SMOKE_SUPERUSER_EMAIL,
+// Env: SMOKE_URL (default http://127.0.0.1:8090), SMOKE_SUPERUSER_EMAIL,
 // SMOKE_SUPERUSER_PASSWORD (default local dev superuser).
 import assert from 'node:assert/strict'
 import { EventSource } from 'eventsource'
@@ -13,13 +13,31 @@ import { EventSource } from 'eventsource'
 // PB SDK realtime needs a browser EventSource; polyfill it for Node.
 if (typeof globalThis.EventSource === 'undefined') globalThis.EventSource = EventSource
 
-const BASE = (process.env.SMOKE_URL || 'http://127.0.0.1:8091').replace(/\/+$/, '')
+const BASE = (process.env.SMOKE_URL || 'http://127.0.0.1:8090').replace(/\/+$/, '')
 const EMAIL = process.env.SMOKE_SUPERUSER_EMAIL || 'local@cubby.test'
 const PASSWORD = process.env.SMOKE_SUPERUSER_PASSWORD || 'cubby-local-dev'
 
-const { default: cubby, CubbyError } = await import('../pb_public/js/foundation.esm.js')
-cubby.configure({ app: 'hello', instanceUrl: BASE })
-await cubby.ready
+// One core module, many platform instances -- exactly the browser's shape.
+//
+// Each simulated browser window gets its own platform module (fresh `state`,
+// fresh PocketBase client, fresh authStore) via a ?windowN specifier suffix.
+// The relative `import './core.esm.js'` INSIDE platform.esm.js carries no query,
+// so every window resolves it to the same URL and shares one core instance --
+// which is why CubbyError is a single class across all of them, and why core
+// must stay stateless.
+const core = await import('../pb_public/js/core.esm.js')
+const { CubbyError } = core
+
+/** @param {string} [tag] cache-buster making a fresh, isolated platform instance */
+async function openWindow(tag) {
+  const { default: ns } = await import(`../pb_public/js/platform.esm.js${tag ? `?${tag}` : ''}`)
+  // Synchronous, before the first `ready` access: boot is lazy, so this lands first.
+  ns.configure({ app: 'hello', instanceUrl: BASE })
+  await ns.ready
+  return ns
+}
+
+const cubby = await openWindow()
 
 let passed = 0
 async function test(name, fn) {
@@ -206,11 +224,9 @@ await test('fs: cross-app read via { app } option', async () => {
   await cubby.fs.remove('smoke/shared.txt')
 })
 
-// Rooms: a second foundation instance (fresh module via query suffix) plays
-// the "other browser window" with its own impersonated user.
-const { default: cubby2 } = await import('../pb_public/js/foundation.esm.js?window2')
-cubby2.configure({ app: 'hello', instanceUrl: BASE })
-await cubby2.ready
+// Rooms: a second platform instance plays the "other browser window" with
+// its own impersonated user.
+const cubby2 = await openWindow('window2')
 
 const search2 = await fetch(
   `${BASE}/api/collections/users/records?filter=${encodeURIComponent("email='smoke2@cubby.test'")}`,
@@ -296,9 +312,7 @@ await test('rooms: emit rejects reserved and unauthenticated use', async () => {
 })
 
 await test('rooms: names and realtime resolve after signing in mid-watch', async () => {
-  const { default: cubby3 } = await import('../pb_public/js/foundation.esm.js?window3')
-  cubby3.configure({ app: 'hello', instanceUrl: BASE })
-  await cubby3.ready
+  const cubby3 = await openWindow('window3')
 
   // An unrelated subscription keeps the SSE connection alive across the
   // auth change; PB rejects mismatched-auth submits on a live connection,
@@ -342,9 +356,7 @@ await test('rooms: names and realtime resolve after signing in mid-watch', async
 })
 
 await test('rooms: identity.logout departs presence gracefully', async () => {
-  const { default: cubby4 } = await import('../pb_public/js/foundation.esm.js?window4')
-  cubby4.configure({ app: 'hello', instanceUrl: BASE })
-  await cubby4.ready
+  const cubby4 = await openWindow('window4')
   cubby4._pb.authStore.save(impersonated2.token, impersonated2.record)
 
   const member = cubby4.rooms.room('smoke-lobby3')
@@ -609,6 +621,34 @@ await test('ai: allowedUsers email globs gate access', async () => {
 if (created) await cubby.db.collection('guestbook').delete(created.id).catch(() => {})
 cubby._pb.authStore.clear()
 cubby2._pb.authStore.clear()
+
+await test('one CubbyError class across every window and bundle', async () => {
+  // Before the split each window bundled its own copy, so this was silently
+  // untestable -- cubby2's errors were a different class from cubby's.
+  assert.equal(cubby.CubbyError, core.CubbyError)
+  assert.equal(cubby2.CubbyError, core.CubbyError)
+  await assert.rejects(
+    () => cubby2.fs.read('definitely/missing.txt'),
+    (err) => err instanceof core.CubbyError && err.code === 'not_found'
+  )
+})
+
+await test('the deprecated foundation bundle still exposes the same surface', async () => {
+  // Pages cached before the migration keep asking for this one, and phio never
+  // deletes it. It has to keep working, standalone.
+  const { default: legacy, CubbyError: LegacyError } = await import(
+    '../pb_public/js/foundation.esm.js?legacy'
+  )
+  legacy.configure({ app: 'hello', instanceUrl: BASE })
+  await legacy.ready
+
+  for (const key of ['db', 'fs', 'ai', 'rooms', 'identity', 'identityChanged', 'configure', 'app']) {
+    assert.ok(legacy[key], `foundation.esm.js must still expose ${key}`)
+  }
+  assert.equal(legacy.config?.name, cubby.config?.name, 'and still boot the same config')
+  // The ESM compat twin shares the canonical class (both files ship side by side).
+  assert.equal(LegacyError, core.CubbyError)
+})
 
 console.log(process.exitCode ? 'SMOKE FAILED' : `smoke passed (${passed} tests)`)
 process.exit(process.exitCode || 0)

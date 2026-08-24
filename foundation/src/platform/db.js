@@ -1,4 +1,4 @@
-import { CubbyError } from './errors.js'
+import { CubbyError } from '#core'
 
 const COLLECTION_RE = /^[a-z0-9_]+$/
 const APP_RE = /^[a-z0-9_-]+$/

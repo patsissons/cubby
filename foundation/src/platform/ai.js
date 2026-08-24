@@ -1,4 +1,4 @@
-import { CubbyError } from './errors.js'
+import { CubbyError } from '#core'
 
 /**
  * AI chat via the server-side proxy at /_cubby/ai/chat. Non-streaming by

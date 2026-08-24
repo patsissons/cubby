@@ -16,29 +16,18 @@
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
-    <link rel="stylesheet" href="style.css?v=9e878e48" />
-    <script src="/js/foundation.js?v=7998ac72" defer></script>
-    <script src="app.js?v=6c324449" defer></script>
+    <link rel="stylesheet" href="/css/tokens.css?v=9d78fd37" data-cubby-tokens />
+    <link rel="stylesheet" href="style.css?v=f4a5db12" />
+    <script src="/js/core.js?v=f32adb29" defer></script>
+    <script src="/js/platform.js?v=b1f620e0" defer></script>
+    <script src="/js/nav.js?v=a71f82e8" defer></script>
+    <script src="/js/draw.js?v=4890fa2b" defer></script>
+    <script src="/js/graph.js?v=4a9d4a16" defer></script>
+    <script src="app.js?v=f450fc36" defer></script>
   </head>
   <body>
+    <div id="sitebar"></div>
     <div class="layout">
-      <nav id="toc" aria-label="Sections">
-        <a class="brand" href="/">🕳️ cubby</a>
-        <a href="#nutshell">In a nutshell</a>
-        <a href="#good-for">What it's good for</a>
-        <a href="#plugin">The Claude plugin</a>
-        <a href="#foundation">The foundation</a>
-        <a href="#identity" class="sub">identity</a>
-        <a href="#db" class="sub">db</a>
-        <a href="#fs" class="sub">fs</a>
-        <a href="#markdown" class="sub">markdown</a>
-        <a href="#ai" class="sub">ai</a>
-        <a href="#rooms" class="sub">rooms</a>
-        <a href="#building">Building an app</a>
-        <a href="#running">Running your own</a>
-        <a href="#links">Links</a>
-      </nav>
-
       <main>
         <header>
           <h1>📚 Cubby, on one page</h1>
@@ -48,8 +37,8 @@
           </p>
         </header>
 
-        <section id="nutshell">
-          <h2>In a nutshell</h2>
+        <section aria-labelledby="nutshell">
+          <h2 id="nutshell">In a nutshell</h2>
           <p>
             One GitHub repo deploys to one
             <a href="https://pockethost.io">PocketHost</a> (PocketBase) instance and hosts many
@@ -63,10 +52,11 @@
             <div class="arrow">serves</div>
             <div class="box">/&lt;app&gt;/<br /><small>+ / discovery site</small></div>
           </div>
-          <p>Every app loads one script and gets the whole platform:</p>
-          <pre><code>&lt;script src="/js/foundation.js" defer&gt;&lt;/script&gt;</code></pre>
+          <p>Every app loads core, then whatever else it actually uses:</p>
+          <pre><code>&lt;script src="/js/core.js" defer&gt;&lt;/script&gt;
+&lt;script src="/js/platform.js" defer&gt;&lt;/script&gt;</code></pre>
           <p>
-            That script exposes a global <code>cubby</code> object providing a database
+            Those expose a global <code>cubby</code> object providing a database
             (<a href="#db">db</a>), file storage (<a href="#fs">fs</a>), OAuth login
             (<a href="#identity">identity</a>), AI chat (<a href="#ai">ai</a>), and multi-user
             rooms (<a href="#rooms">rooms</a>), all backed by the shared PocketBase instance;
@@ -77,8 +67,18 @@
           </p>
         </section>
 
-        <section id="good-for">
-          <h2>What it's good for</h2>
+        <section aria-labelledby="flow" data-nav-label="Flow">
+          <h2 id="flow">How a request flows</h2>
+          <p>
+            Hover a journey below the diagram — or tab to it — to trace one path through the
+            platform. Every journey is written out underneath, so the drawing is never the only
+            copy.
+          </p>
+          <div id="flow-diagram"></div>
+        </section>
+
+        <section aria-labelledby="good-for">
+          <h2 id="good-for">What it's good for</h2>
           <p>
             Weekend-sized ideas that deserve to stay alive: guestbooks, timers, trackers, polls,
             little games, dashboards, gifts. Anything where "a static page plus a database plus
@@ -94,8 +94,8 @@
           </ul>
         </section>
 
-        <section id="plugin">
-          <h2>The Claude plugin</h2>
+        <section aria-labelledby="plugin">
+          <h2 id="plugin">The Claude plugin</h2>
           <p>
             The repo is its own Claude Code plugin marketplace. The skills that power it are the
             same documents an AI agent follows, so "ask Claude to do it" is a first-class path:
@@ -115,11 +115,32 @@
           </p>
         </section>
 
-        <section id="foundation">
-          <h2>The foundation</h2>
+        <section aria-labelledby="foundation" data-nav-label="Modules">
+          <h2 id="foundation">Modules and load order</h2>
           <p>
-            Load <code>/js/foundation.js</code> (or import <code>/js/foundation.esm.js</code>),
-            wait for <code>cubby.ready</code>, then use anything:
+            cubby ships in layers so a page pays only for what it uses.
+            <code>core.js</code> (1.5KB) is the namespace, errors, escaping and the
+            widget lifecycle — no PocketBase at all. <code>platform.js</code> (14.2KB)
+            adds db, fs, identity, ai and rooms. Modules like
+            <a href="#markdown">markdown</a> layer on top. A page that only renders
+            content can load core and markdown and never fetch the SDK.
+          </p>
+          <p>
+            <strong>Tag order is the dependency declaration.</strong>
+            <code>defer</code> scripts run in document order and there is no ready
+            event, so this order is the whole contract — core first, your app last:
+          </p>
+          <pre><code>&lt;script src="/js/core.js" defer&gt;&lt;/script&gt;
+&lt;script src="/js/platform.js" defer&gt;&lt;/script&gt;
+&lt;script src="/js/markdown.js" defer&gt;&lt;/script&gt;
+&lt;script src="app.js" defer&gt;&lt;/script&gt;</code></pre>
+          <p>
+            As ES modules, import <code>/js/platform.esm.js</code>.
+            <code>/js/foundation.js</code> is the deprecated all-in-one; it still
+            works, but new apps should not use it.
+          </p>
+          <p>
+            Wait for <code>cubby.ready</code>, then use anything:
           </p>
           <pre><code>await cubby.ready
 
@@ -134,8 +155,8 @@ cubby.version    // foundation version</code></pre>
           </p>
         </section>
 
-        <section id="identity">
-          <h3>cubby.identity</h3>
+        <section aria-labelledby="identity" data-nav-label="identity">
+          <h3 id="identity">cubby.identity</h3>
           <p>
             OAuth2 only (Google and GitHub out of the box); password auth is disabled
             platform-wide. One users collection serves every app, and the session is shared
@@ -155,8 +176,8 @@ await cubby.identity.logout()</code></pre>
           </p>
         </section>
 
-        <section id="db">
-          <h3>cubby.db</h3>
+        <section aria-labelledby="db" data-nav-label="db">
+          <h3 id="db">cubby.db</h3>
           <p>
             Collections are namespaced <code>&lt;app&gt;_&lt;name&gt;</code> by convention, and
             what you get back is the full PocketBase SDK record service: queries, pagination,
@@ -176,8 +197,8 @@ cubby.db.raw                                    // the PocketBase SDK client</co
           </p>
         </section>
 
-        <section id="fs">
-          <h3>cubby.fs</h3>
+        <section aria-labelledby="fs" data-nav-label="fs">
+          <h3 id="fs">cubby.fs</h3>
           <p>
             File storage over a shared platform collection: one record per (app, path), 10MB per
             file, public reads, authenticated writes, upsert semantics.
@@ -196,18 +217,19 @@ await cubby.fs.read('data.json', { app: 'otherapp' }) // cross-app read</code></
           </p>
         </section>
 
-        <section id="markdown">
-          <h3>cubby.markdown</h3>
+        <section aria-labelledby="markdown" data-nav-label="markdown">
+          <h3 id="markdown">cubby.markdown</h3>
           <p>
             Markdown rendering and an editor with live preview and paste-image upload. Opt-in:
-            one extra script tag after the foundation (both <code>defer</code>, so order is
-            guaranteed) — apps that skip it pay zero bytes.
+            one extra script tag after <code>core.js</code> (both <code>defer</code>, so order
+            is guaranteed) — apps that skip it pay zero bytes. It needs core, not the
+            platform: <code>render()</code> works with no backend at all.
           </p>
-          <pre><code>&lt;script src="/js/foundation.js" defer&gt;&lt;/script&gt;
+          <pre><code>&lt;script src="/js/core.js" defer&gt;&lt;/script&gt;
 &lt;script src="/js/markdown.js" defer&gt;&lt;/script&gt;</code></pre>
           <pre><code>el.innerHTML = cubby.markdown.render('# hi **there**')
 
-const ed = cubby.markdown.editor(container, {
+const ed = cubby.editor(container, {
   value: '',
   preview: true,                       // Write|Preview tabs; 'split' = live pane
   upload: { pathPrefix: 'uploads/' },  // paste/drop images upload via cubby.fs
@@ -227,8 +249,8 @@ ed.value                               // get/set the markdown</code></pre>
           </p>
         </section>
 
-        <section id="ai">
-          <h3>cubby.ai</h3>
+        <section aria-labelledby="ai" data-nav-label="ai">
+          <h3 id="ai">cubby.ai</h3>
           <p>
             Chat through a server-side proxy; provider API keys live in instance secrets and
             never reach the browser. Models are friendly aliases defined in
@@ -260,8 +282,8 @@ res.text                            // plus res.usage, res.model, res.provider</
           </p>
         </section>
 
-        <section id="rooms">
-          <h3>cubby.rooms</h3>
+        <section aria-labelledby="rooms" data-nav-label="rooms">
+          <h3 id="rooms">cubby.rooms</h3>
           <p>
             Presence, shared per-user state, and broadcast events for multi-user pages. Watching
             works signed out; joining requires auth and heartbeats automatically. A server-side
@@ -289,11 +311,11 @@ await room.leave()</code></pre>
           </p>
         </section>
 
-        <section id="building">
-          <h2>Building an app</h2>
+        <section aria-labelledby="building">
+          <h2 id="building">Building an app</h2>
           <p>An app is one directory served at <code>/&lt;name&gt;/</code>:</p>
           <pre><code>pb_public/myapp/
-├── index.html      loads /js/foundation.js + app.js
+├── index.html      loads /js/core.js + /js/platform.js + app.js
 ├── app.js          await cubby.ready, then build
 ├── style.css
 └── cubby.json      { name, title, description, icon }   -> discovery site card</code></pre>
@@ -319,8 +341,8 @@ npm run dev         # local PocketBase + watch build at localhost:8090</code></p
           </ul>
         </section>
 
-        <section id="running">
-          <h2>Running your own</h2>
+        <section aria-labelledby="running">
+          <h2 id="running">Running your own</h2>
           <p>
             The public repo is a GitHub template and the platform's home. Your deployment is a
             separate repo created from it; apps live there, and platform improvements flow back
@@ -352,8 +374,8 @@ npm run dev         # local PocketBase + watch build at localhost:8090</code></p
           </p>
         </section>
 
-        <section id="links">
-          <h2>Links</h2>
+        <section aria-labelledby="links">
+          <h2 id="links">Links</h2>
           <ul>
             <li><a href="https://github.com/patsissons/cubby">github.com/patsissons/cubby</a>: the platform (template this)</li>
             <li><a href="/hello/">/hello/</a>: every API above, live on one page</li>

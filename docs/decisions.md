@@ -216,3 +216,104 @@ mixed one. The rewrite is anchored to real <script>/<link> tags so
 escaped tag examples inside docs code blocks are left alone, and it
 replaces existing stamps so rebuilds stay drift-free. HTML itself is
 still cached up to 4h; only asset mismatches are eliminated.
+
+## The foundation splits into core, platform, and per-feature widgets
+
+Every page loaded one 14.4KB gzipped foundation.js whether it touched a
+backend or not. The building blocks in issue #1 -- nav, graph, preview, an
+editor -- would have added ~16KB more to that same bundle, and most of them
+need no backend at all. So the split is not db/fs/ai/rooms into four
+bundles: of that 14.4KB the PocketBase SDK is ~11KB and every facade needs
+the same client, so four bundles would save ~1.5KB while turning
+state.hooks.beforeLogout and the realtime auth-cycle into a cross-bundle
+public contract. The axis that pays is core (no PocketBase, 1.5KB) /
+platform (PocketBase, 14.2KB) / widgets, which makes the backend the
+optional part and a platform-free page possible for the first time.
+
+Be honest about who benefits: none of the four apps that existed at the time
+got smaller. hello uses every subsystem, docs and the discovery site use
+rooms, and even _template uses identityChanged. The win is forward-looking --
+new widgets never become a tax on pages that ignore them.
+
+Every non-core module imports a virtual '#core' specifier that the build
+resolves three ways: inlined for core itself and for the standalone compat
+bundle, an external ./core.esm.js for the ESM twins, and a window.cubby
+accessor for the IIFE widgets. This fixed a real bug rather than preventing a
+hypothetical one -- markdown.js imported ../errors.js directly, so it shipped
+a second CubbyError class and every error cubby.markdown threw failed
+instanceof against cubby.CubbyError (hello/app.js still checks err.code,
+which remains the documented contract). Six more bundles meant six more
+copies. scripts/core-tests.mjs asserts the class definition appears exactly
+once across the artifacts, and the guard was checked against a deliberately
+old-style build to confirm it discriminates.
+
+foundation.js keeps building and stays standalone -- it inlines core rather
+than depending on a core.js tag. It has to: phio deploys are additive, so it
+never leaves the server, and the CDN caches per URL for ~4h, so a page cached
+before the migration asks for it with no core.js tag beside it. Deprecated
+here means documented as superseded, not scheduled for deletion.
+
+That same caching asymmetry sets the rule for every later module move.
+Content hashes protect the new-URL direction completely: a URL nobody has
+requested is a guaranteed cache miss. They give nothing in the other
+direction, because the origin ignores the query string -- a cached page
+re-requesting /js/markdown.js?v=OLD gets today's bytes. So a bundle may gain
+capability freely, but must never lose capability a cached page depends on
+in the same deploy that moves it. Additions and removals are separate
+commits, a cache generation apart.
+
+Tag order is the dependency declaration, and defer document order is the only
+guarantee: core.js, platform.js, markdown.js, editor.js, then the widgets,
+then app.js. No runtime loader, because a loader builds its URLs at runtime
+and the manifest stamper only sees literal tags -- adopting one would forfeit
+the cache coherence the previous decision bought. A missing hard dependency
+logs once and attaches nothing; a missing platform is silent, because a page
+deliberately serving markdown with no backend is a supported configuration,
+not a failure.
+
+## Shared drawing sends whole paths, not streams of points
+
+The obvious way to build shared scribbling is to throttle the pointer at ~50ms
+and broadcast each position. On cubby that is unaffordable: rooms.emit()
+creates a rooms_events row per call, so one person drawing is ~20 rows/sec
+against a sweeper that deletes a fixed BATCH per minute. At the old BATCH of
+200 that was ~3/sec, so a single ten-second scribble consumed a whole minute of
+capacity and two simultaneous drawers grew the table without bound. The feature
+was deferred on those grounds.
+
+The transport that works is to capture the stroke locally as a vector, simplify
+it, and send whole paths. Flushing on a ~800ms timer as well as on release
+keeps a peer's latency bounded by the segment rather than by however long
+someone keeps drawing, and each segment carries its duration so the receiver
+replays it at the speed it was drawn -- so it still looks live. That is roughly
+1 event/sec per drawer instead of 20. BATCH went to 1000 (~16/sec, a dozen
+simultaneous drawers) and EVENTS_TTL_MS to 2 minutes, since nothing ever reads
+an event back.
+
+The transport change deletes three of the hardest bugs in this kind of feature
+rather than merely making it cheaper. With one self-contained event per
+segment there is no stroke-end broadcast, so there is no session ordinal to
+reconcile against late points, no retired-sessions set, and no way for a point
+to arrive after its own end and strand a mark on the page. The fade timer is
+refreshed by activity instead of started by an end event, which means a lost
+final segment cannot freeze a mark -- the failure the end broadcast existed to
+prevent, arriving by the back door.
+
+What survives unchanged is everything about local input, which is where the
+difficulty really lives: render your own marks from your own pointer and drop
+every inbound event whose sender is you (cubby echoes, and everything arriving
+before your own id is known must go too, because until then you cannot tell
+yours from anyone's); four resets funnelling into one idempotent exit, because
+the modifier's keyup is swallowed by Alt-Tab, blur, tab switch and OS-level
+grabs, and a latched modifier eats every later click on the page; buttons === 0
+to bail out of a latched drag; and never preventDefault-ing the modifier keydown,
+because Alt+arrow is text navigation and screen readers use it as a modifier.
+
+Broadcasting your own cursor to peers is off by default. The local puck is
+free, but every remote cursor sample is a presence write plus an SSE fan-out
+with none of the batching that makes strokes cheap. Marks are the feature.
+
+This does not fully honour the "no persistence of any kind" principle the
+design started from: a row exists until the sweeper takes it. It honours the
+purpose -- clients subscribe to create only and never read history, so a late
+joiner sees nothing and a refresh clears the page.

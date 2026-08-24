@@ -116,9 +116,9 @@ function wireNotes() {
 // ---- markdown -------------------------------------------------------------
 function wireMarkdown() {
   const status = $('md-status')
-  // cubby.markdown is opt-in: /js/markdown.js loads after /js/foundation.js
-  if (!cubby.markdown) {
-    status.textContent = 'cubby.markdown missing: load /js/markdown.js after foundation.js'
+  // Both are opt-in: /js/markdown.js then /js/editor.js, after core.js.
+  if (!cubby.editor) {
+    status.textContent = 'cubby.editor missing: load /js/markdown.js then /js/editor.js'
     return
   }
   const sample = [
@@ -139,7 +139,7 @@ function wireMarkdown() {
     '',
     '[docs](/docs/#markdown)',
   ].join('\n')
-  cubby.markdown.editor($('md-editor'), {
+  cubby.editor($('md-editor'), {
     value: sample,
     rows: 10,
     upload: { pathPrefix: 'uploads/' },

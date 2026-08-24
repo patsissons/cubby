@@ -1,24 +1,3 @@
-:root {
-  color-scheme: light dark;
-  --bg: #faf9f7;
-  --fg: #1c1b1a;
-  --muted: #6f6b66;
-  --accent: #c2571b;
-  --card: #ffffff;
-  --border: #e5e1db;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #171512;
-    --fg: #ece9e4;
-    --muted: #9b958d;
-    --accent: #e8823f;
-    --card: #211e1a;
-    --border: #38332d;
-  }
-}
-
 * {
   box-sizing: border-box;
 }

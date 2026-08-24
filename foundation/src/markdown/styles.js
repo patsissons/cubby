@@ -1,9 +1,12 @@
+import { injectStyle, ensureTokens } from '#core'
+
 /**
  * Injected stylesheet for rendered markdown and the editor. Delivered via
  * JS (not a separate .css) so apps only add one script tag. Colors consume
- * the app token vocabulary every cubby app already defines (--border,
- * --muted, --accent, --code-bg) with theme-neutral fallbacks, so the
- * editor and preview inherit each app's light/dark palette automatically.
+ * the shared token vocabulary (--border, --muted, --accent, --code-bg) with
+ * theme-neutral fallbacks, so the editor and preview inherit each app's
+ * light/dark palette automatically -- and so a foreign host with no cubby
+ * stylesheet still renders legibly.
  */
 
 const STYLES = `
@@ -56,12 +59,13 @@ const STYLES = `
  * Insert the markdown stylesheet once per document. editor() calls this
  * automatically; apps that only use render() call it themselves (or style
  * .cubby-markdown in their own CSS instead).
+ *
+ * Both sheets go in via core's injectStyle, which PREPENDS to <head> -- so an
+ * app's own stylesheet comes later in document order and wins every
+ * specificity tie. This used to appendChild, which silently inverted that and
+ * meant adopting the module could override the host's styling.
  */
 export function injectStyles() {
-  if (typeof document === 'undefined') return
-  if (document.querySelector('style[data-cubby-markdown]')) return
-  const el = document.createElement('style')
-  el.setAttribute('data-cubby-markdown', '')
-  el.textContent = STYLES
-  document.head.appendChild(el)
+  ensureTokens()
+  injectStyle('markdown', STYLES)
 }
