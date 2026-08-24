@@ -77,6 +77,13 @@ function wireDraw() {
   cubby.draw('main', { room: '_root/draw-docs' })
 }
 
+// Hover a link that leaves this page and see where it goes. In-page anchors
+// are excluded: previewing the section you are already reading is noise.
+function wirePreviews() {
+  if (!cubby.preview) return
+  cubby.preview(document.body, { selector: 'a[href]:not([href^="#"])', delay: 700 })
+}
+
 // Copy buttons on every code block.
 function wireCopyButtons() {
   for (const pre of document.querySelectorAll('pre')) {
@@ -119,6 +126,7 @@ async function wireLive() {
 }
 
 wireNav()
+wirePreviews()
 wireDiagram()
 wireDraw()
 wireCopyButtons()

@@ -200,3 +200,31 @@ footer {
     padding-top: 1.5rem;
   }
 }
+
+table.modules {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 0.85rem;
+  display: block;
+  overflow-x: auto;
+}
+
+table.modules th,
+table.modules td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.35rem 0.6rem 0.35rem 0;
+  text-align: left;
+  vertical-align: top;
+}
+
+table.modules th {
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+table.modules td:nth-child(2) {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}

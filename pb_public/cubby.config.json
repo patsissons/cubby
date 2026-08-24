@@ -16,7 +16,12 @@
     }
   },
   "preview": {
-    "frameable": []
+    "frameable": ["pockethost.io"],
+    "measured": {
+      "pockethost.io": "2026-08-24: no x-frame-options, no frame-ancestors",
+      "github.com": "2026-08-24: REFUSED, x-frame-options deny + frame-ancestors none",
+      "pocketbase.io": "2026-08-24: REFUSED, x-frame-options SAMEORIGIN"
+    }
   },
   "reservedNames": [
     "api",

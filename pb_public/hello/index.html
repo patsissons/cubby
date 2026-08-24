@@ -17,26 +17,31 @@
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="stylesheet" href="/css/tokens.css?v=9d78fd37" data-cubby-tokens />
-    <link rel="stylesheet" href="style.css?v=ed4b4656" />
+    <link rel="stylesheet" href="style.css?v=c29f0857" />
     <script src="/js/core.js?v=f32adb29" defer></script>
     <script src="/js/platform.js?v=b1f620e0" defer></script>
     <script src="/js/markdown.js?v=1ee40094" defer></script>
     <script src="/js/editor.js?v=a34b04dc" defer></script>
-    <script src="app.js?v=1b0e6f3d" defer></script>
+    <script src="/js/nav.js?v=a71f82e8" defer></script>
+    <script src="/js/preview.js?v=e3d8c254" defer></script>
+    <script src="/js/draw.js?v=4890fa2b" defer></script>
+    <script src="/js/graph.js?v=4a9d4a16" defer></script>
+    <script src="app.js?v=394c9324" defer></script>
   </head>
   <body>
+    <div id="sitebar"></div>
     <main>
       <h1>👋 Hello</h1>
       <p class="tagline">Every cubby subsystem, one page.</p>
 
-      <section id="identity-section">
-        <h2>Identity</h2>
+      <section aria-labelledby="identity" data-nav-label="Identity">
+        <h2 id="identity">Identity</h2>
         <div id="identity-status">loading...</div>
         <div id="identity-actions"></div>
       </section>
 
-      <section id="guestbook-section">
-        <h2>Guestbook</h2>
+      <section aria-labelledby="guestbook" data-nav-label="Guestbook">
+        <h2 id="guestbook">Guestbook</h2>
         <p class="hint">Realtime via cubby.db - open two windows.</p>
         <form id="guestbook-form">
           <input id="guestbook-input" placeholder="leave a message" maxlength="500" required />
@@ -45,8 +50,8 @@
         <ul id="guestbook-list"></ul>
       </section>
 
-      <section id="fs-section">
-        <h2>Notes (cubby.fs)</h2>
+      <section aria-labelledby="files" data-nav-label="Files">
+        <h2 id="files">Notes (cubby.fs)</h2>
         <textarea id="note-text" rows="3" placeholder="a note saved to file storage"></textarea>
         <div>
           <button id="note-save">save</button>
@@ -55,24 +60,59 @@
         </div>
       </section>
 
-      <section id="markdown-section">
-        <h2>Markdown (cubby.markdown)</h2>
+      <section aria-labelledby="editor" data-nav-label="Editor">
+        <h2 id="editor">Editor (cubby.editor)</h2>
         <p class="hint">Write/Preview tabs; paste or drop an image while signed in to upload it.</p>
         <div id="md-editor"></div>
         <span id="md-status"></span>
       </section>
 
-      <section id="rooms-section">
-        <h2>Who's here (cubby.rooms)</h2>
+      <section aria-labelledby="rooms" data-nav-label="Rooms">
+        <h2 id="rooms">Who's here (cubby.rooms)</h2>
         <div id="presence-bar"></div>
         <button id="announce">broadcast a wave 👋</button>
         <ul id="room-log"></ul>
       </section>
 
-      <section id="ai-section">
-        <h2>AI (cubby.ai)</h2>
+      <section aria-labelledby="ai" data-nav-label="AI">
+        <h2 id="ai">AI (cubby.ai)</h2>
         <button id="ai-greet">ask the AI to greet you</button>
         <blockquote id="ai-output"></blockquote>
+      </section>
+
+      <section aria-labelledby="diagram" data-nav-label="Diagram">
+        <h2 id="diagram">Diagrams (cubby.graph)</h2>
+        <p class="hint">
+          Declarative: lanes give y, column gives x, and journeys name edges — so which nodes a
+          journey touches is derived, never maintained. Hover a journey below the canvas.
+        </p>
+        <div id="hello-diagram"></div>
+      </section>
+
+      <section aria-labelledby="previews" data-nav-label="Previews">
+        <h2 id="previews">Link previews (cubby.preview)</h2>
+        <p class="hint">
+          Linger on a link. A blocked frame cannot be detected from JavaScript, so framing is an
+          allowlist of hosts whose headers were actually measured — the last two below refuse, and
+          say so rather than showing a blank box.
+        </p>
+        <ul class="links" id="preview-links">
+          <li><a href="/" data-preview-description="The discovery site: every app on this instance.">The discovery site</a></li>
+          <li><a href="/docs/" data-preview-description="The whole platform on one page.">The docs</a></li>
+          <li><a href="https://pockethost.io" data-preview-description="The host cubby runs on. Measured 2026-08-24: frameable.">PocketHost</a></li>
+          <li><a href="https://pocketbase.io/docs/" data-preview-description="PocketBase's own docs. Sends x-frame-options: SAMEORIGIN.">PocketBase docs</a></li>
+          <li><a href="https://github.com/patsissons/cubby" data-preview-description="The source. Sends frame-ancestors 'none'.">cubby on GitHub</a></li>
+        </ul>
+      </section>
+
+      <section aria-labelledby="scribble" data-nav-label="Scribble">
+        <h2 id="scribble">Scribble together (cubby.draw)</h2>
+        <p class="hint">
+          Hold <kbd>Alt</kbd> and the pointer becomes a puck; hold and drag to draw. Strokes are
+          captured as vectors and sent as whole paths, so a scribble is a handful of events rather
+          than hundreds. Sign in and open a second window to share; nothing is persisted.
+        </p>
+        <div id="draw-status" class="hint"></div>
       </section>
     </main>
   </body>

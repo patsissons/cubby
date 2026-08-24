@@ -1,8 +1,89 @@
-// The hello app exercises every cubby subsystem on one page. It is the
-// integration test and the copy-from reference for new apps.
+// The hello app exercises every cubby module on one page: the platform
+// (identity, db, fs, ai, rooms), the editor, and the core-only widgets (nav,
+// preview, draw, graph). It is the integration test and the copy-from
+// reference for new apps.
 /* global cubby */
 
 const $ = (id) => document.getElementById(id)
+
+
+// ---- widgets --------------------------------------------------------------
+//
+// nav, preview, draw and graph need only core.js -- none of them touches the
+// backend -- so they are wired before `await cubby.ready` rather than after.
+// Each is feature-detected: an app that drops a tag keeps working.
+
+function wireNav() {
+  if (!cubby.nav) return
+  // Row two is derived from the DOM: every section here carries
+  // aria-labelledby pointing at its own heading id, so the bar cannot list a
+  // section that no longer exists.
+  cubby.nav('#sitebar', {
+    label: 'Cubby',
+    pages: [
+      { href: '/', label: '\u{1F573}\uFE0F cubby' },
+      { href: '/docs/', label: 'Docs' },
+      { href: '/hello/', label: 'Hello' },
+    ],
+  })
+}
+
+function wirePreviews() {
+  if (!cubby.preview) return
+  // Delegated on the LIST, not on the heading: after the nav restructure
+  // #previews is the <h2>, and the links are its siblings. The allowlist in
+  // cubby.config.json decides which of these actually frame; the ones that
+  // refuse still render a card naming the host, because showing nothing would
+  // read as a broken feature rather than as a page that will not embed.
+  cubby.preview('#preview-links', { selector: 'a[href]', delay: 600 })
+}
+
+function wireDraw() {
+  if (!cubby.draw) return
+  const status = $('draw-status')
+  cubby.draw('main', { room: 'scribble' })
+  if (status) {
+    status.textContent = cubby.identity?.user
+      ? 'Sharing with anyone else signed in on this page.'
+      : 'Signed out: your marks stay on this screen.'
+  }
+}
+
+function wireDiagram() {
+  if (!cubby.graph) return
+  cubby.graph('#hello-diagram', {
+    label: 'What this page does',
+    kinds: {
+      call: { hue: 265, dash: '2 4' },
+      data: { hue: 145, dash: '7 4' },
+      proxy: { hue: 205, dash: '' },
+    },
+    lanes: [
+      { id: 'page', label: 'This page' },
+      { id: 'instance', label: 'Instance' },
+    ],
+    nodes: [
+      { id: 'db', lane: 'page', column: 1, label: 'cubby.db', note: 'The guestbook above, live over SSE.' },
+      { id: 'fs', lane: 'page', column: 2, label: 'cubby.fs', note: 'Notes, and images pasted into the editor.' },
+      { id: 'ai', lane: 'page', column: 3, label: 'cubby.ai', note: 'Never holds a key: the instance proxies it.' },
+      { id: 'guestbook', lane: 'instance', column: 1, label: 'hello_guestbook', note: 'This app owns this collection.' },
+      { id: 'files', lane: 'instance', column: 2, label: 'files', note: 'Shared across apps, namespaced per app.' },
+      { id: 'proxy', lane: 'instance', column: 3, label: 'pb_hooks', note: 'Applies this app\u2019s `ai` policy from cubby.json.' },
+    ],
+    edges: [
+      { id: 'sign', from: 'db', to: 'guestbook', kind: 'data', label: 'create' },
+      { id: 'watch', from: 'guestbook', to: 'db', kind: 'data', label: 'subscribe' },
+      { id: 'save', from: 'fs', to: 'files', kind: 'data', label: 'write' },
+      { id: 'ask', from: 'ai', to: 'proxy', kind: 'call' },
+      { id: 'call', from: 'proxy', to: 'ai', kind: 'proxy', label: 'reply' },
+    ],
+    journeys: [
+      { id: 'sign-it', label: 'Sign the guestbook', hue: 145, edges: ['sign', 'watch'] },
+      { id: 'save-note', label: 'Save a note', hue: 205, edges: ['save'] },
+      { id: 'ask-ai', label: 'Ask the AI', hue: 280, edges: ['ask', 'call'] },
+    ],
+  })
+}
 
 // ---- identity -------------------------------------------------------------
 function wireIdentity() {
@@ -245,7 +326,14 @@ function wireAi() {
 }
 
 async function main() {
+  // Core-only widgets first: they need no config and no auth, so the page has
+  // its chrome before the platform has finished booting.
+  wireNav()
+  wirePreviews()
+  wireDiagram()
+
   await cubby.ready
+  wireDraw()
   wireIdentity()
   wireNotes()
   wireMarkdown()

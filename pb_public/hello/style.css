@@ -95,3 +95,23 @@ blockquote {
   color: var(--muted);
   font-size: 0.85rem;
 }
+
+.links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.links a {
+  color: var(--accent);
+}
+
+kbd {
+  padding: 0.1em 0.35em;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--code-bg);
+  font: 0.85em/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}

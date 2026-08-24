@@ -17,13 +17,14 @@
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="stylesheet" href="/css/tokens.css?v=9d78fd37" data-cubby-tokens />
-    <link rel="stylesheet" href="style.css?v=f4a5db12" />
+    <link rel="stylesheet" href="style.css?v=802e052b" />
     <script src="/js/core.js?v=f32adb29" defer></script>
     <script src="/js/platform.js?v=b1f620e0" defer></script>
     <script src="/js/nav.js?v=a71f82e8" defer></script>
     <script src="/js/draw.js?v=4890fa2b" defer></script>
     <script src="/js/graph.js?v=4a9d4a16" defer></script>
-    <script src="app.js?v=f450fc36" defer></script>
+    <script src="/js/preview.js?v=e3d8c254" defer></script>
+    <script src="app.js?v=cb96eb84" defer></script>
   </head>
   <body>
     <div id="sitebar"></div>
@@ -119,11 +120,31 @@
           <h2 id="foundation">Modules and load order</h2>
           <p>
             cubby ships in layers so a page pays only for what it uses.
-            <code>core.js</code> (1.5KB) is the namespace, errors, escaping and the
-            widget lifecycle — no PocketBase at all. <code>platform.js</code> (14.2KB)
-            adds db, fs, identity, ai and rooms. Modules like
-            <a href="#markdown">markdown</a> layer on top. A page that only renders
-            content can load core and markdown and never fetch the SDK.
+            <code>core.js</code> is the namespace, errors, escaping and the widget
+            lifecycle — no PocketBase at all. <code>platform.js</code> adds db, fs,
+            identity, ai and rooms. Everything else layers on top of core, and most
+            of it never touches the backend, so a page that only renders content can
+            skip <code>platform.js</code> entirely.
+          </p>
+          <table class="modules">
+            <thead>
+              <tr><th>bundle</th><th>gz</th><th>needs</th><th>what it is</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>core.js</code></td><td>1.6KB</td><td>—</td><td>namespace, <code>CubbyError</code>, escaping, widget lifecycle, design tokens</td></tr>
+              <tr><td><code>platform.js</code></td><td>14.3KB</td><td>core</td><td>PocketBase: db, fs, ai, rooms, identity</td></tr>
+              <tr><td><code>markdown.js</code></td><td>6.1KB</td><td>core</td><td><a href="#markdown">safe rendering</a></td></tr>
+              <tr><td><code>editor.js</code></td><td>2.0KB</td><td>markdown</td><td>textarea, live preview, paste-image upload</td></tr>
+              <tr><td><code>nav.js</code></td><td>2.3KB</td><td>core</td><td>the sticky bar at the top of this page</td></tr>
+              <tr><td><code>preview.js</code></td><td>2.8KB</td><td>core</td><td>hover a link, see the page</td></tr>
+              <tr><td><code>draw.js</code></td><td>4.4KB</td><td>core</td><td>hold Alt and scribble; shared when signed in</td></tr>
+              <tr><td><code>graph.js</code></td><td>5.3KB</td><td>core</td><td>the <a href="#flow">diagram above</a></td></tr>
+              <tr><td><code>foundation.js</code></td><td>15.4KB</td><td>—</td><td><strong>deprecated</strong> all-in-one; do not use it in new apps</td></tr>
+            </tbody>
+          </table>
+          <p class="hint">
+            This page loads core, platform, nav, draw, graph and preview.
+            <a href="/hello/">Hello</a> loads all of them.
           </p>
           <p>
             <strong>Tag order is the dependency declaration.</strong>
