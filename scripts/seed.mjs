@@ -3,7 +3,7 @@
 //
 //   npm run dev     # in another terminal
 //   npm run seed
-const BASE = (process.env.SMOKE_URL || 'http://127.0.0.1:8091').replace(/\/+$/, '')
+const BASE = (process.env.SMOKE_URL || 'http://127.0.0.1:8090').replace(/\/+$/, '')
 const EMAIL = process.env.SMOKE_SUPERUSER_EMAIL || 'local@cubby.test'
 const PASSWORD = process.env.SMOKE_SUPERUSER_PASSWORD || 'cubby-local-dev'
 

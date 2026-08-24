@@ -1,4 +1,4 @@
-import { CubbyError } from '../errors.js'
+import { CubbyError } from '#core'
 import { render } from './render.js'
 import { injectStyles } from './styles.js'
 

@@ -1,6 +1,6 @@
 import PocketBase from 'pocketbase'
-import { FOUNDATION_NAMESPACE, loadConfig } from './config.js'
-import { CubbyError } from './errors.js'
+import { loadConfig } from './config.js'
+import { CubbyError, FOUNDATION_NAMESPACE } from '#core'
 import { createDb } from './db.js'
 import { createIdentity } from './identity.js'
 import { createFs } from './fs.js'
@@ -8,9 +8,19 @@ import { createAi } from './ai.js'
 import { createRooms } from './rooms.js'
 
 /**
- * The cubby foundation: one shared PocketBase client plus small facades for
- * database, file storage, identity, AI, and rooms. Loaded by every app via
- * <script src="/js/foundation.js"></script> or as an ES module.
+ * The cubby platform: one shared PocketBase client plus small facades for
+ * database, file storage, identity, AI, and rooms.
+ *
+ * Layered on top of core, not the other way round -- nav, graph, preview and a
+ * preview-only editor need no backend, so the backend is the optional part.
+ * Loaded via <script src="/js/platform.js" defer></script> AFTER core.js, or
+ * as an ES module from /js/platform.esm.js.
+ *
+ * Every singleton in this module (state, pb, bootPromise) is module-scoped, so
+ * one module instance is one "window". scripts/smoke.mjs leans on that: a
+ * ?windowN query suffix gives a fresh platform instance while the un-queried
+ * relative import of core.esm.js stays shared, which is exactly the browser's
+ * shape -- one core.js serving every bundle on a page.
  */
 
 /** @returns {string} first path segment, or _root on / */
@@ -71,8 +81,8 @@ function configure(overrides = {}) {
     state.baseUrl = String(overrides.instanceUrl).replace(/\/+$/, '')
     pb.baseURL = state.baseUrl
   }
-  cubby.app = appInfo()
-  return cubby
+  if (ns) ns.app = appInfo()
+  return ns
 }
 
 function appInfo() {
@@ -114,43 +124,73 @@ async function boot() {
       pb.authStore.clear()
     }
   }
-  return cubby
+  return ns
 }
 
 const { identity, identityChanged } = createIdentity(state, pb)
 
-// __CUBBY_VERSION__ is replaced by esbuild's define with the package.json version.
-const cubby = {
-  version: typeof __CUBBY_VERSION__ === 'undefined' ? 'dev' : __CUBBY_VERSION__,
-  app: appInfo(),
-  configure,
-  CubbyError,
-  db: createDb(state, pb),
-  fs: createFs(state, pb),
-  ai: createAi(state, pb),
-  rooms: createRooms(state, pb),
-  identity,
-  identityChanged,
-  /** The deployment config (cubby.config.json); null until ready resolves. */
-  get config() {
-    return state.config
-  },
-  /**
-   * Resolves after config fetch and auth restore. Boot starts on first
-   * access, so configure() calls made before the first await apply first.
-   */
-  get ready() {
-    if (!bootPromise) bootPromise = boot()
-    return bootPromise
-  },
-  /** @internal shared state for foundation modules */
-  _state: state,
-  /** @internal shared PocketBase client */
-  _pb: pb,
-}
+/** @type {object|null} the namespace this module instance was attached to */
+let ns = null
 
-/** @type {Promise<typeof cubby> | null} */
+/** @type {Promise<object> | null} */
 let bootPromise = null
 
-export default cubby
+/**
+ * Publish the platform onto a cubby namespace (one already carrying core).
+ *
+ * Idempotent by the _pb marker: loading platform.js twice, or alongside the
+ * deprecated foundation.js, must never create a second PocketBase client, a
+ * second realtime connection, or a second visit beacon.
+ *
+ * `config` and `ready` go on via defineProperties, not Object.assign --
+ * assigning would evaluate the getters once, freezing config at null and, far
+ * worse, booting immediately. Boot has to stay lazy so a configure() call made
+ * before the first `await cubby.ready` still lands first.
+ *
+ * @param {object} target
+ * @returns {object} the same namespace, populated
+ */
+export function attachPlatform(target) {
+  if (target._pb) return target
+  ns = target
+
+  Object.assign(target, {
+    app: appInfo(),
+    configure,
+    db: createDb(state, pb),
+    fs: createFs(state, pb),
+    ai: createAi(state, pb),
+    rooms: createRooms(state, pb),
+    identity,
+    identityChanged,
+    /** @internal shared state for platform modules */
+    _state: state,
+    /** @internal shared PocketBase client */
+    _pb: pb,
+  })
+
+  Object.defineProperties(target, {
+    config: {
+      enumerable: true,
+      /** The deployment config (cubby.config.json); null until ready resolves. */
+      get() {
+        return state.config
+      },
+    },
+    ready: {
+      enumerable: true,
+      /**
+       * Resolves after config fetch and auth restore. Boot starts on first
+       * access, so configure() calls made before the first await apply first.
+       */
+      get() {
+        if (!bootPromise) bootPromise = boot()
+        return bootPromise
+      },
+    },
+  })
+
+  return target
+}
+
 export { CubbyError, FOUNDATION_NAMESPACE }

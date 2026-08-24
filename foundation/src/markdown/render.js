@@ -1,4 +1,4 @@
-import { escapeHtml } from './sanitize.js'
+import { escapeHtml } from '#core'
 import { renderInline } from './inline.js'
 
 /**

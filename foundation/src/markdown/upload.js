@@ -1,4 +1,4 @@
-import { CubbyError, toCubbyError } from '../errors.js'
+import { CubbyError, toCubbyError } from '#core'
 
 /**
  * Paste/drop image upload for a textarea, GitHub PR editor style: an

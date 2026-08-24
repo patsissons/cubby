@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "imports": {
+    "#core": "./foundation/src/core/index.js"
+  },
   "description": "Micro app host on PocketHost: many tiny static web apps, one PocketBase instance.",
   "license": "MIT",
   "repository": "https://github.com/patsissons/cubby",
@@ -15,6 +18,8 @@
     "build:foundation": "node foundation/build.mjs",
     "build:manifest": "node scripts/build-manifest.mjs",
     "new-app": "node scripts/new-app.mjs",
+    "test": "npm run test:core && npm run test:markdown",
+    "test:core": "node scripts/core-tests.mjs",
     "test:markdown": "node scripts/markdown-tests.mjs",
     "seed": "node scripts/seed.mjs",
     "deploy": "phio deploy -v"

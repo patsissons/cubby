@@ -1,4 +1,4 @@
-import { CubbyError, toCubbyError } from './errors.js'
+import { CubbyError, toCubbyError } from '#core'
 
 /** Minimal extension to mime map for string writes. */
 const MIME = {

@@ -5,7 +5,7 @@
 //   npm run dev            # in another terminal
 //   node scripts/smoke.mjs
 //
-// Env: SMOKE_URL (default http://127.0.0.1:8091), SMOKE_SUPERUSER_EMAIL,
+// Env: SMOKE_URL (default http://127.0.0.1:8090), SMOKE_SUPERUSER_EMAIL,
 // SMOKE_SUPERUSER_PASSWORD (default local dev superuser).
 import assert from 'node:assert/strict'
 import { EventSource } from 'eventsource'
@@ -13,7 +13,7 @@ import { EventSource } from 'eventsource'
 // PB SDK realtime needs a browser EventSource; polyfill it for Node.
 if (typeof globalThis.EventSource === 'undefined') globalThis.EventSource = EventSource
 
-const BASE = (process.env.SMOKE_URL || 'http://127.0.0.1:8091').replace(/\/+$/, '')
+const BASE = (process.env.SMOKE_URL || 'http://127.0.0.1:8090').replace(/\/+$/, '')
 const EMAIL = process.env.SMOKE_SUPERUSER_EMAIL || 'local@cubby.test'
 const PASSWORD = process.env.SMOKE_SUPERUSER_PASSWORD || 'cubby-local-dev'
 
