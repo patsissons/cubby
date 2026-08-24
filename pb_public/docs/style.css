@@ -1,28 +1,3 @@
-:root {
-  color-scheme: light dark;
-  --bg: #faf8f5;
-  --fg: #201d1a;
-  --muted: #77706a;
-  --accent: #c2571b;
-  --accent-soft: #c2571b1a;
-  --card: #ffffff;
-  --border: #e7e2da;
-  --code-bg: #f2eee8;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #16130f;
-    --fg: #ede9e3;
-    --muted: #9a938a;
-    --accent: #e8823f;
-    --accent-soft: #e8823f1f;
-    --card: #201c17;
-    --border: #362f27;
-    --code-bg: #211d18;
-  }
-}
-
 * {
   box-sizing: border-box;
 }
