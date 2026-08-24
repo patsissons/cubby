@@ -10,6 +10,7 @@
 //   nav.js        sticky two-row site bar                     (needs core)
 //   preview.js    hover-a-link iframe popover                 (needs core)
 //   draw.js       ephemeral shared marks                      (needs core; rooms optional)
+//   graph.js      node-and-edge diagrams in inline SVG        (needs core)
 //   foundation.js DEPRECATED all-in-one core+platform, kept for cached pages
 //
 // NOTE: `npm run dev` holds esbuild watch contexts built from THIS file as it
@@ -88,6 +89,9 @@ const MODULES = [
   // draw ships an ESM twin so its path simplification -- pure and DOM-free --
   // is testable under plain Node.
   { name: 'draw', dir: 'draw', gz: 6, esm: 'index.js' },
+  // graph ships an ESM twin so its deterministic layout and its validation of
+  // author mistakes are testable under plain Node.
+  { name: 'graph', dir: 'graph', gz: 7, esm: 'index.js' },
 ]
 
 const banner = (name) => ({ js: `/* cubby ${name} v${pkg.version} (${pkg.repository}) */` })

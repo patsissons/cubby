@@ -226,6 +226,75 @@ signed-out pastes error with `auth_required` and insert nothing. Image
 types: png/jpeg/gif/webp (SVG is excluded: PocketBase serves files with
 their declared content type, and SVG can script on the instance origin).
 
+## Graph: cubby.graph (opt-in)
+
+Node-and-edge diagrams in inline SVG. Core only, zero dependencies — no d3, no
+mermaid, no canvas, because a static-files-only site cannot afford a renderer
+script.
+
+```html
+<script src="/js/core.js" defer></script>
+<script src="/js/graph.js" defer></script>
+```
+
+```js
+cubby.graph('#diagram', {
+  lanes: [{ id: 'browser', label: 'Browser' }],
+  nodes: [{ id: 'app', lane: 'browser', column: 1, label: 'app.js', note: 'markdown **note**' }],
+  edges: [{ id: 'e1', from: 'app', to: 'api', kind: 'http', label: 'REST' }],
+  journeys: [{ id: 'load', label: 'Load a page', hue: 205, edges: ['e1'] }],
+  kinds: { http: { hue: 205, dash: '' }, data: { hue: 145, dash: '7 4' } },
+})
+```
+
+**Declarative data with no coordinates.** `lanes` give y, `column` gives x, and
+one pass computes the rest. There is no force simulation: a diagram that
+rearranges itself between visits cannot be referred to in prose. `column` is
+1-based and unique within a lane — that is what makes layout a direct mapping
+rather than a packing problem. Two nodes sharing a lane and column overlap,
+which is reported rather than thrown, because half a diagram is more useful
+than an exception.
+
+**A journey is a list of edge ids, never node ids.** This is load-bearing: a
+journey can only describe hops that were actually declared, and it lets "every
+node no journey touches" be *derived* instead of maintained. Add an edge to a
+journey and both update for free; the two cannot disagree. A node no journey
+touches falls back to its own edges when highlighted — without that, hovering
+it would dim the whole diagram and highlight nothing, which reads as a bug.
+
+Other constraints worth knowing before editing it:
+
+- **Plain wheel scrolls the page.** Only ⌘/Ctrl + wheel zooms, and with no
+  modifier the listener does nothing at all — a canvas that swallows plain
+  wheel traps a reader scrolling past it. Drag-to-pan and explicit zoom buttons
+  carry the rest, with a visible hint, because a modifier key is not
+  discoverable.
+- **Everything reachable by hover is reachable by focus**, with an identical
+  highlight state. No hover-only information, and every journey is rendered as
+  prose beneath the canvas — the drawing is never the only copy. That text is
+  what licenses hiding the popover on touch and below a narrow breakpoint.
+- **No SVG `<title>` children.** It is SVG's accessible-name mechanism, but
+  browsers also render it as a native tooltip after ~1s, on top of the designed
+  popover, saying less, in a font you do not control. `role` + `aria-label`
+  instead.
+- **`pointer-events: none` on the popover**, or moving the cursor toward it
+  hovers the popover, fires the edge's `mouseleave`, and it vanishes as you
+  reach for it.
+- Edge kinds differ by **dash pattern as well as hue** — six line colours on a
+  dense diagram is more than colour alone can carry, and a dash survives
+  greyscale printing and colour vision differences.
+- Kinds, node types and journey hues are **config applied through custom
+  properties** (`--cubby-graph-k-<kind>`, `--cubby-graph-d-<kind>`,
+  `--cubby-graph-j-<journey>`), not enums duplicated in JS and CSS. A seventh
+  kind is a data change, and a consumer with their own vocabulary can express
+  it by redefining the property.
+- Node and edge `note` fields are rendered through `cubby.markdown.render` when
+  that module is loaded and as plain text when it is not. Callers never supply
+  raw HTML: cubby already owns an escape-first renderer whose output is the one
+  sanctioned `innerHTML` source.
+
+`/docs/#flow` is the working example.
+
 ## Draw: cubby.draw (opt-in)
 
 Ephemeral shared cursors and freehand marks. Needs core; uses `cubby.rooms`

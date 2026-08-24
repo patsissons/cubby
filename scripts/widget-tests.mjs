@@ -882,6 +882,223 @@ await test('draw.destroy unlatches, leaves the room and removes both layers', as
   assert.equal(p.document.querySelector('.cubby-draw-chip'), null)
 })
 
+// --- graph -------------------------------------------------------------------
+
+const GRAPH_SCRIPTS = ['core.js', 'graph.js']
+const GRAPH_DATA = {
+  label: 'Test diagram',
+  lanes: [{ id: 'top', label: 'Top' }, { id: 'bottom', label: 'Bottom' }],
+  nodes: [
+    { id: 'a', lane: 'top', column: 1, label: 'A', note: 'The **first** node' },
+    { id: 'b', lane: 'top', column: 2, label: 'B' },
+    { id: 'c', lane: 'bottom', column: 1, label: 'C' },
+    { id: 'lonely', lane: 'bottom', column: 2, label: 'Lonely' },
+  ],
+  edges: [
+    { id: 'ab', from: 'a', to: 'b', kind: 'call', label: 'calls' },
+    { id: 'bc', from: 'b', to: 'c', kind: 'data' },
+    { id: 'side', from: 'c', to: 'lonely', kind: 'data' },
+  ],
+  journeys: [{ id: 'trip', label: 'A trip', hue: 20, edges: ['ab', 'bc'] }],
+  kinds: { call: { hue: 200, dash: '' }, data: { hue: 145, dash: '6 4' } },
+}
+
+function mountGraph(extra = {}, scripts = GRAPH_SCRIPTS) {
+  const p = page({ html: '<div id="host"></div>', scripts })
+  const g = p.cubby.graph('#host', { ...GRAPH_DATA, ...extra })
+  const q = (sel) => p.document.querySelector(sel)
+  const qa = (sel) => [...p.document.querySelectorAll(sel)]
+  return { p, g, q, qa, root: q('.cubby-graph') }
+}
+
+const onNodes = (qa) => qa('.cubby-graph-node[data-on]').map((n) => n.getAttribute('aria-label'))
+const onEdges = (qa) => qa('path.cubby-graph-edge[data-on]').length
+
+await test('graph renders lanes, nodes and edges from declarative data', () => {
+  const { p, qa, q } = mountGraph()
+  assert.deepEqual(p.errors, [])
+  assert.equal(qa('.cubby-graph-lane').length, 2)
+  assert.equal(qa('.cubby-graph-node').length, 4)
+  assert.equal(qa('path.cubby-graph-edge').length, 3)
+  assert.equal(q('svg.cubby-graph-canvas').getAttribute('aria-label'), 'Test diagram')
+})
+
+await test('the diagram carries no SVG <title> children', () => {
+  const { qa } = mountGraph()
+  // <title> is SVG's accessible-name mechanism, but browsers also render it as
+  // a native tooltip after ~1s, on top of the designed popover, saying less,
+  // in a font we do not control.
+  assert.equal(qa('svg title').length, 0)
+  // role + aria-label instead, on both nodes and edges.
+  assert.ok(qa('.cubby-graph-node[aria-label]').length === 4)
+  assert.ok(qa('path.cubby-graph-edge[aria-label]').length === 3)
+})
+
+await test('kinds are config through custom properties, not enums in two files', () => {
+  const { root, q } = mountGraph()
+  // A seventh kind must be a data change, not a matching edit in JS and CSS.
+  assert.equal(root.style.getPropertyValue('--cubby-graph-k-call'), 'hsl(200 70% 45%)')
+  assert.equal(root.style.getPropertyValue('--cubby-graph-d-data'), '6 4')
+  assert.equal(root.style.getPropertyValue('--cubby-graph-j-trip'), 'hsl(20 75% 45%)')
+
+  const edge = q('path.cubby-graph-edge')
+  assert.equal(edge.getAttribute('stroke'), 'var(--cubby-graph-k-call)')
+  // Kind differs by DASH as well as hue: colour alone cannot carry six kinds,
+  // and a dash survives greyscale printing and colour vision differences.
+  assert.equal(edge.getAttribute('stroke-dasharray'), 'var(--cubby-graph-d-call)')
+})
+
+await test('hover and focus produce an identical highlight state', () => {
+  const { p, qa } = mountGraph()
+  const nodeA = qa('.cubby-graph-node')[0]
+
+  nodeA.dispatchEvent(new p.window.Event('mouseenter'))
+  const hovered = { nodes: onNodes(qa).sort(), edges: onEdges(qa) }
+  nodeA.dispatchEvent(new p.window.Event('mouseleave'))
+  assert.equal(onEdges(qa), 0, 'and it clears')
+
+  nodeA.dispatchEvent(new p.window.Event('focus'))
+  const focused = { nodes: onNodes(qa).sort(), edges: onEdges(qa) }
+  // No hover-only information anywhere in the diagram.
+  assert.deepEqual(focused, hovered)
+})
+
+await test('hovering a node highlights the journeys that run through it', () => {
+  const { p, qa, root } = mountGraph()
+  qa('.cubby-graph-node')[0].dispatchEvent(new p.window.Event('mouseenter'))
+  assert.equal(root.getAttribute('data-focused'), '', 'everything else dims')
+  assert.deepEqual(onNodes(qa).sort(), ['A', 'B', 'C'], 'the whole journey, not just the node')
+  assert.equal(onEdges(qa), 2)
+})
+
+await test('a node no journey touches falls back to its own edges', () => {
+  const { p, qa } = mountGraph()
+  const lonely = qa('.cubby-graph-node').find((n) => n.getAttribute('aria-label') === 'Lonely')
+  lonely.dispatchEvent(new p.window.Event('mouseenter'))
+  // Without the fallback this would dim the entire diagram and highlight
+  // nothing, which reads as a bug rather than as an absence of journeys.
+  assert.deepEqual(onNodes(qa).sort(), ['C', 'Lonely'])
+  assert.equal(onEdges(qa), 1)
+})
+
+await test('a journey chip highlights exactly its edges', () => {
+  const { p, qa, q } = mountGraph()
+  q('.cubby-graph-chip').dispatchEvent(new p.window.Event('mouseenter'))
+  assert.equal(onEdges(qa), 2)
+  assert.deepEqual(onNodes(qa).sort(), ['A', 'B', 'C'])
+})
+
+await test('every journey is also rendered as prose beneath the canvas', () => {
+  const { q } = mountGraph()
+  // The drawing is never the only copy -- and this text is what licenses
+  // hiding the popover on touch and on a narrow screen.
+  assert.equal(q('.cubby-graph-prose dt').textContent, 'A trip')
+  assert.equal(q('.cubby-graph-prose dd').textContent, 'A → B (calls), then B → C')
+})
+
+await test('the popover cannot be hovered, and renders notes as markdown when it can', () => {
+  const withMd = mountGraph({}, ['core.js', 'markdown.js', 'graph.js'])
+  withMd.qa('.cubby-graph-node')[0].dispatchEvent(new withMd.p.window.Event('mouseenter'))
+  const pop = withMd.q('.cubby-graph-popover')
+  assert.equal(pop.hidden, false)
+  assert.match(pop.innerHTML, /<strong>The <strong>first<\/strong>|first/)
+  assert.ok(pop.querySelector('div'), 'the note rendered')
+
+  const css = [...withMd.p.document.head.querySelectorAll('style[data-cubby-graph]')]
+    .map((s) => s.textContent)
+    .join('')
+  // Without this, moving the cursor toward the popover hovers the popover,
+  // which fires the edge's mouseleave, and it vanishes as you reach for it.
+  assert.match(css, /\.cubby-graph-popover\s*\{[^}]*pointer-events:\s*none/)
+})
+
+await test('a note is plain text when the markdown module is absent', () => {
+  const { p, qa, q } = mountGraph()
+  qa('.cubby-graph-node')[0].dispatchEvent(new p.window.Event('mouseenter'))
+  const body = q('.cubby-graph-popover div')
+  // Never a raw innerHTML string from a caller: cubby owns an escape-first
+  // renderer, and without it the note is inert text.
+  assert.equal(body.textContent, 'The **first** node')
+  assert.equal(body.querySelector('strong'), null)
+})
+
+await test('plain wheel scrolls the page; only ctrl/cmd + wheel zooms', () => {
+  const { p, q } = mountGraph()
+  const frame = q('.cubby-graph-frame')
+  const svg = q('svg.cubby-graph-canvas')
+  const before = svg.getAttribute('viewBox')
+
+  const plain = new p.window.Event('wheel', { bubbles: true, cancelable: true })
+  Object.assign(plain, { deltaY: 120, clientX: 10, clientY: 10 })
+  frame.dispatchEvent(plain)
+  // A canvas that swallows plain wheel traps a reader scrolling past it, and
+  // on a trackpad they may not realise what happened.
+  assert.equal(plain.defaultPrevented, false, 'the listener must do nothing at all')
+  assert.equal(svg.getAttribute('viewBox'), before, 'and must not zoom')
+
+  const zoom = new p.window.Event('wheel', { bubbles: true, cancelable: true })
+  Object.assign(zoom, { deltaY: -120, clientX: 10, clientY: 10, ctrlKey: true })
+  frame.dispatchEvent(zoom)
+  assert.equal(zoom.defaultPrevented, true)
+  assert.notEqual(svg.getAttribute('viewBox'), before, 'now it zooms')
+})
+
+await test('the modifier is not discoverable, so the hint says it out loud', () => {
+  const { q } = mountGraph()
+  assert.match(q('.cubby-graph-hint').textContent, /Ctrl/)
+  assert.match(q('.cubby-graph-hint').textContent, /[Dd]rag to pan/)
+})
+
+await test('zoom buttons and reset work without a pointer', () => {
+  const { p, q, qa } = mountGraph()
+  const svg = q('svg.cubby-graph-canvas')
+  const home = svg.getAttribute('viewBox')
+  const [zin, , reset] = qa('.cubby-graph-controls button')
+
+  zin.dispatchEvent(new p.window.Event('click', { bubbles: true }))
+  assert.notEqual(svg.getAttribute('viewBox'), home)
+  reset.dispatchEvent(new p.window.Event('click', { bubbles: true }))
+  assert.equal(svg.getAttribute('viewBox'), home)
+})
+
+await test('a pan with buttons === 0 bails instead of latching', () => {
+  const { p, q } = mountGraph()
+  const svg = q('svg.cubby-graph-canvas')
+  const send = (type, extra) => {
+    const e = new p.window.Event(type, { bubbles: true })
+    Object.assign(e, { clientX: 0, clientY: 0, pointerId: 1, ...extra })
+    svg.dispatchEvent(e)
+    return e
+  }
+  send('pointerdown', { clientX: 100, clientY: 100 })
+  assert.equal(svg.getAttribute('data-panning'), '')
+
+  // A pointerdown with no matching pointerup would otherwise latch drag mode
+  // and pan the diagram off into space on every later move.
+  send('pointermove', { clientX: 140, clientY: 120, buttons: 0 })
+  assert.equal(svg.hasAttribute('data-panning'), false)
+})
+
+await test('author mistakes are reported once, naming the id, and still render', () => {
+  const p = page({ html: '<div id="host"></div>', scripts: GRAPH_SCRIPTS })
+  p.cubby.graph('#host', {
+    lanes: [{ id: 'l' }],
+    nodes: [{ id: 'a', lane: 'l', column: 1 }, { id: 'b', lane: 'l', column: 1 }],
+    edges: [],
+  })
+  assert.equal(p.errors.length, 1)
+  assert.match(p.errors[0], /overlap at lane "l" column 1/)
+  // Half a diagram is more useful than an exception.
+  assert.equal(p.document.querySelectorAll('.cubby-graph-node').length, 2)
+})
+
+await test('graph.destroy removes the diagram and its popover', () => {
+  const { p, g } = mountGraph()
+  g.destroy()
+  assert.equal(p.document.querySelector('.cubby-graph'), null)
+  assert.equal(p.document.querySelector('.cubby-graph-popover'), null)
+})
+
 // --- style injection --------------------------------------------------------
 
 await test('injected styles are PREPENDED so the host stylesheet still wins', () => {

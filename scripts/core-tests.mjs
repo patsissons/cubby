@@ -20,6 +20,7 @@ const markdown = await import('../pb_public/js/markdown.esm.js')
 const platform = await import('../pb_public/js/platform.esm.js')
 const preview = await import('../pb_public/js/preview.esm.js')
 const draw = await import('../pb_public/js/draw.esm.js')
+const graph = await import('../pb_public/js/graph.esm.js')
 
 let passed = 0
 async function test(name, fn) {
@@ -401,6 +402,116 @@ await test('a realistic one-second segment fits comfortably in the payload field
   assert.ok(packed.length < raw.length, `simplified ${raw.length} -> ${packed.length}`)
   // rooms_events.payload is a json field with maxSize 100000.
   assert.ok(bytes < 4000, `${bytes} bytes is far inside the 100KB payload cap`)
+})
+
+// --- graph: deterministic layout and derived relationships -------------------
+
+const DIAGRAM = {
+  lanes: [{ id: 'top' }, { id: 'bottom' }],
+  nodes: [
+    { id: 'a', lane: 'top', column: 1, label: 'A' },
+    { id: 'b', lane: 'top', column: 2, label: 'B' },
+    { id: 'c', lane: 'bottom', column: 1, label: 'C' },
+    { id: 'lonely', lane: 'bottom', column: 2, label: 'Lonely' },
+  ],
+  edges: [
+    { id: 'ab', from: 'a', to: 'b' },
+    { id: 'bc', from: 'b', to: 'c' },
+    { id: 'side', from: 'c', to: 'lonely' },
+  ],
+  journeys: [{ id: 'trip', label: 'A trip', edges: ['ab', 'bc'] }],
+}
+
+await test('layout is a direct mapping: lanes give y, column gives x', () => {
+  const m = graph.layout(DIAGRAM)
+  const at = (id) => m.nodes.find((n) => n.id === id)
+  assert.equal(at('a').y, at('b').y, 'same lane, same y')
+  assert.ok(at('c').y > at('a').y, 'a later lane is lower')
+  assert.ok(at('b').x > at('a').x, 'a later column is further right')
+  assert.equal(at('a').x, at('c').x, 'the same column aligns across lanes')
+})
+
+await test('layout is deterministic: the same data lays out identically', () => {
+  // A diagram that rearranges itself between visits cannot be referred to in
+  // prose -- which is why there is no force simulation here.
+  const a = graph.layout(DIAGRAM)
+  const b = graph.layout(DIAGRAM)
+  assert.deepEqual(
+    a.nodes.map((n) => [n.id, n.x, n.y]),
+    b.nodes.map((n) => [n.id, n.x, n.y])
+  )
+  assert.deepEqual(a.edges.map((e) => e.d), b.edges.map((e) => e.d))
+})
+
+await test('a journey names EDGES, so its nodes are derived', () => {
+  const m = graph.layout(DIAGRAM)
+  const trip = m.journeys[0]
+  // Naming nodes as well would let the two disagree; deriving them means
+  // adding an edge to a journey updates both for free.
+  assert.deepEqual([...trip.nodes].sort(), ['a', 'b', 'c'])
+})
+
+await test('nodes no journey touches are derived, never maintained', () => {
+  const m = graph.layout(DIAGRAM)
+  assert.deepEqual(m.orphans, ['lonely'])
+
+  // Extend the journey to cover it and it stops being an orphan, with nothing
+  // else edited.
+  const extended = graph.layout({
+    ...DIAGRAM,
+    journeys: [{ id: 'trip', edges: ['ab', 'bc', 'side'] }],
+  })
+  assert.deepEqual(extended.orphans, [])
+})
+
+await test('an orphan node still has its own edges to fall back on', () => {
+  // Without this the widget would dim the whole diagram and highlight nothing,
+  // which reads as a bug rather than as an absence of journeys.
+  const m = graph.layout(DIAGRAM)
+  assert.deepEqual(m.nodeEdges.get('lonely'), ['side'])
+  assert.equal(m.nodeJourneys.has('lonely'), false)
+})
+
+await test('validate reports author mistakes by id instead of throwing', () => {
+  const problems = graph.validate({
+    lanes: [{ id: 'top' }],
+    nodes: [
+      { id: 'a', lane: 'top', column: 1 },
+      { id: 'a', lane: 'top', column: 2 },
+      { id: 'clash', lane: 'top', column: 2 },
+      { id: 'nowhere', lane: 'missing', column: 1 },
+    ],
+    edges: [{ id: 'e', from: 'a', to: 'ghost' }],
+    journeys: [{ id: 'j', edges: ['nope'] }],
+  })
+  const joined = problems.join(' | ')
+  assert.match(joined, /duplicate node id "a"/)
+  assert.match(joined, /overlap at lane "top" column 2/, 'two nodes in one slot would draw on top of each other')
+  assert.match(joined, /unknown lane "missing"/)
+  assert.match(joined, /unknown node "ghost"/)
+  assert.match(joined, /journey "j" names unknown edge "nope"/)
+})
+
+await test('a journey renders as prose, so the drawing is never the only copy', () => {
+  const m = graph.layout({
+    ...DIAGRAM,
+    edges: [{ id: 'ab', from: 'a', to: 'b', label: 'calls' }, ...DIAGRAM.edges.slice(1)],
+  })
+  const text = graph.describeJourney(m, m.journeys[0])
+  assert.equal(text, 'A → B (calls), then B → C')
+})
+
+await test('layout survives dangling references without producing junk geometry', () => {
+  const m = graph.layout({
+    lanes: [{ id: 'l' }],
+    nodes: [{ id: 'a', lane: 'l', column: 1 }, { id: 'x', lane: 'ghost', column: 1 }],
+    edges: [{ id: 'ok', from: 'a', to: 'a' }, { id: 'bad', from: 'a', to: 'ghost' }],
+    journeys: [{ id: 'j', edges: ['bad', 'ok'] }],
+  })
+  assert.deepEqual(m.nodes.map((n) => n.id), ['a'], 'a node in an unknown lane is dropped')
+  assert.deepEqual(m.edges.map((e) => e.id), ['ok'], 'an edge to nowhere is dropped')
+  assert.deepEqual(m.journeys[0].edges, ['ok'], 'and the journey forgets it too')
+  assert.ok(m.problems.length, 'but every one of them is reported')
 })
 
 // --- widget lifecycle -------------------------------------------------------
