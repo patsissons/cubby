@@ -1,4 +1,5 @@
 import { CubbyError, widget } from '#core'
+import { injectEditorStyles } from './styles.js'
 
 /**
  * Markdown editor factory: a plain textarea plus a live preview, in one of
@@ -47,7 +48,10 @@ export function createEditor(cubby, attachImageUpload) {
     if (!md) {
       throw new CubbyError('bad_request', 'the editor needs /js/markdown.js loaded before it')
     }
+    // The preview area is styled by .cubby-markdown, which markdown.js owns;
+    // the editor chrome is ours.
     md.injectStyles()
+    injectEditorStyles()
     const mode = opts.preview === false ? 'none' : opts.preview === 'split' ? 'split' : 'tabs'
     const debounceMs = opts.previewDebounceMs ?? 150
     const onChange = opts.onChange || (() => {})

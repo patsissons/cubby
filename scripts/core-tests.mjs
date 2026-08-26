@@ -52,7 +52,7 @@ await test('errors thrown across bundles are the one canonical CubbyError', () =
   const md = markdown.createMarkdown({})
   assert.throws(
     () => md.editor('#anything'),
-    (err) => err instanceof core.CubbyError && err.code === 'bad_request',
+    (err) => err instanceof core.CubbyError && err.code === 'editor_moved',
     'a CubbyError thrown by markdown.esm.js is instanceof core.esm.js CubbyError'
   )
 })
@@ -114,9 +114,11 @@ await test('core.js then markdown.js: one namespace, one error class', () => {
   assert.equal(cubby.markdown.render('**hi**').trim(), '<p><strong>hi</strong></p>')
 
   // The whole point of the shim: markdown throws core's class, not its own.
+  // The editor moved to its own bundle; the old name forwards, and names the
+  // tag you need when the new bundle is absent.
   assert.throws(
     () => cubby.markdown.editor('#x'),
-    (err) => err instanceof cubby.CubbyError && err.code === 'bad_request'
+    (err) => err instanceof cubby.CubbyError && err.code === 'editor_moved'
   )
 })
 
@@ -167,12 +169,11 @@ await test('editor.js carries no second renderer and no second error class', () 
   const js = bundle('editor.js')
   assert.equal((js.match(/name="CubbyError"/g) || []).length, 0)
   // Renderer-only markup that markdown.js emits and the editor must not.
-  for (const marker of ['blockquote', 'cubby-md-tab']) {
-    const inMarkdown = bundle('markdown.js').includes(marker)
-    assert.ok(inMarkdown, `sanity: markdown.js should contain ${marker} in this phase`)
-  }
+  assert.ok(bundle('markdown.js').includes('blockquote'), 'sanity: markdown.js renders')
   assert.ok(!js.includes('blockquote'), 'editor.js must borrow render, not bundle it')
-  assert.ok(js.length < bundle('markdown.js').length / 2, 'and stay much smaller than it')
+  // Its own chrome, however, is its own now.
+  assert.ok(js.includes('cubby-md-tab'), 'editor.js owns the editor stylesheet')
+  assert.ok(!bundle('markdown.js').includes('cubby-md-tab'), 'and markdown.js has shed it')
 })
 
 await test('the editor degrades to a plain composer with no platform, silently', () => {
@@ -281,6 +282,53 @@ await test('sanitizeUrl refuses script-bearing schemes, including obfuscated one
   }
   assert.equal(core.sanitizeUrl(null), '', 'non-strings are refused')
   assert.equal(core.sanitizeUrl(undefined), '')
+})
+
+// --- markdown/editor split ---------------------------------------------------
+
+await test('markdown.js no longer carries the editor', () => {
+  const md = bundle('markdown.js')
+  const ed = bundle('editor.js')
+  // An app that only renders markdown should not pay for a textarea it never
+  // mounts, in code or in CSS.
+  // Markers only the IMPLEMENTATION produces -- "attachImageUpload" would be a
+  // false positive, since markdown.js still carries that name as a string in
+  // its forwarding accessor.
+  for (const marker of ['cubby-md-tab', 'cubby-md-input', 'image/webp', 'Uploading ']) {
+    assert.ok(!md.includes(marker), `markdown.js must not contain ${marker}`)
+    assert.ok(ed.includes(marker), `editor.js must contain ${marker}`)
+  }
+  // and it kept what it is for
+  assert.ok(md.includes('cubby-markdown'), 'markdown.js still styles rendered content')
+  assert.ok(!ed.includes('blockquote'), 'editor.js still borrows the renderer')
+})
+
+await test('the moved members forward when editor.js is present', () => {
+  const editorFn = () => 'mounted'
+  editorFn.attachImageUpload = () => 'attached'
+  const ns = { editor: editorFn }
+  const md = markdown.createMarkdown(ns)
+
+  assert.equal(md.editor, editorFn, 'cubby.markdown.editor forwards to cubby.editor')
+  assert.equal(md.attachImageUpload(), 'attached')
+})
+
+await test('the moved members name the missing tag rather than being undefined', () => {
+  const md = markdown.createMarkdown({})
+  for (const name of ['editor', 'attachImageUpload']) {
+    assert.throws(
+      () => md[name],
+      (err) => {
+        assert.ok(err instanceof core.CubbyError)
+        assert.equal(err.code, 'editor_moved')
+        // "undefined is not a function", thrown from inside a minified bundle,
+        // tells a caller nothing about what to do next.
+        assert.match(err.message, /editor\.js/)
+        return true
+      },
+      `${name} must point at the tag`
+    )
+  }
 })
 
 // --- preview: the framing allowlist -----------------------------------------

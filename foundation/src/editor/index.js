@@ -1,5 +1,5 @@
-import { createAttachImageUpload } from '../markdown/upload.js'
-import { createEditor as buildEditor } from '../markdown/editor.js'
+import { createAttachImageUpload } from './upload.js'
+import { createEditor as buildEditor } from './editor.js'
 
 /**
  * Opt-in editor module: a markdown textarea with live preview and
@@ -18,7 +18,12 @@ import { createEditor as buildEditor } from '../markdown/editor.js'
  * @returns {Function} editor(target, options) -> handle
  */
 export function createEditor(cubby) {
-  return buildEditor(cubby, createAttachImageUpload(cubby))
+  const attachImageUpload = createAttachImageUpload(cubby)
+  const editor = buildEditor(cubby, attachImageUpload)
+  // The low-level helper hangs off the mount function, so cubby.editor is one
+  // name carrying both. cubby.markdown.attachImageUpload forwards here.
+  editor.attachImageUpload = attachImageUpload
+  return editor
 }
 
 export default createEditor

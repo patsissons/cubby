@@ -159,7 +159,7 @@ The source lives in `foundation/src/markdown/` and builds to
 `pb_public/js/markdown.js` (attaches `cubby.markdown`) and
 `markdown.esm.js` (exports `render` and `createMarkdown`; `render` is pure
 and runs in Node — `scripts/markdown-tests.mjs` tests the shipped
-artifact). Its gzip budget is 8KB (currently ~6KB).
+artifact). Its gzip budget is 8KB (currently ~4.3KB, since the editor moved out).
 
 ```js
 el.innerHTML = cubby.markdown.render('# hi **there**')
@@ -202,9 +202,12 @@ page. What you see while typing is not an approximation of what gets stored.
 works, upload is simply not wired, and nothing is logged. A page deliberately
 serving markdown with no backend is a supported configuration, not a failure.
 
-`cubby.markdown.editor` and `cubby.markdown.attachImageUpload` still exist and
-still work; they are the previous home of this module and will be removed a
-release after apps have moved.
+`cubby.markdown.editor` and `cubby.markdown.attachImageUpload` are forwarding
+accessors kept for callers written before the split. They return the real thing
+when `editor.js` is loaded, and otherwise throw a `CubbyError` with code
+`editor_moved` naming the tag you are missing — rather than leaving a caller to
+puzzle out "undefined is not a function" thrown from inside a minified bundle.
+They can go once no caller uses them.
 
 **Safety model: escaped by construction.** The renderer is a hand-rolled
 GFM subset with no dependencies and no sanitizer, because none is needed:
