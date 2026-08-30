@@ -423,6 +423,17 @@ await test('hooks: visit stats increment anonymously', async () => {
   assert.equal(invalid.status, 400)
 })
 
+await test('static: root llms.txt is served, not the SPA fallback', async () => {
+  const res = await fetch(`${BASE}/llms.txt`)
+  assert.equal(res.status, 200)
+  assert.ok((res.headers.get('content-type') || '').includes('text/plain'))
+  const body = await res.text()
+  assert.ok(body.startsWith('# '), 'llms.txt starts with an H1')
+  // Missing static paths fall back to the discovery site's index.html, so a
+  // 200 alone proves nothing -- the body must not be that HTML page.
+  assert.ok(!/<!doctype html|<html/i.test(body), 'not the index.html fallback')
+})
+
 // Clear rate stamps so smoke reruns inside the rate window do not flake,
 // then pre-seed an expired stamp for the primary caller so the chat test
 // exercises the atomic UPDATE-claim path (not just first-time creation).
