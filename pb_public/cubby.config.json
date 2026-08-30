@@ -31,6 +31,7 @@
     "_template",
     "index.html",
     "sites.json",
+    "llms.txt",
     "cubby.config.json",
     "icon.svg",
     "og.png",
