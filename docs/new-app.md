@@ -32,7 +32,10 @@ The short version: `npm run new-app <name>`, edit, `npm run dev`, ship.
 6. **Manifest**: `cubby.json` needs name, title, description, icon;
    category and tags are optional but power the discovery site's search
    and chips. Then `npm run build:manifest` regenerates `sites.json`
-   (new-app already does; it stamps each app's `added` date once).
+   (new-app already does; it stamps each app's `added` date once). The same
+   build generates the app's `llms.txt` and a JSON-LD block in its
+   index.html from `cubby.json` — commit them all; to hand-write the
+   llms.txt instead, delete its trailing marker comment.
 7. **Verify**: `npm run dev`, open `http://localhost:8090/my-app/`, exercise
    the app, check the discovery site lists it.
 
@@ -47,5 +50,6 @@ need a platform change, that change belongs upstream in cubby: see
 ## PR shape
 
 One app directory (`pb_public/my-app/`), optional app migrations
-(`pb_migrations/*_app_my_app_*.js`), and the regenerated `sites.json`.
-Nothing else.
+(`pb_migrations/*_app_my_app_*.js`), and the regenerated build artifacts:
+`sites.json`, the llms.txt files (root and the app's own), and the root
+`pb_public/index.html` (its JSON-LD app list grows). Nothing else.
