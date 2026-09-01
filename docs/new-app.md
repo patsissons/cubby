@@ -28,7 +28,10 @@ The short version: `npm run new-app <name>`, edit, `npm run dev`, ship.
    block from `pb_public/hello/index.html`). The shared platform assets
    `/icon.svg`, `/og.png`, and `/apple-touch-icon.png` are there to use,
    and the manifest build rewrites `og:url`/`og:image` origins to the
-   deployment's domain automatically.
+   deployment's domain automatically. If individual records deserve their
+   own unfurling share links (`/my-app/<slug>` with per-record OG tags),
+   declare a `permalink` block in `cubby.json` — see "Permalinks" in
+   `docs/architecture.md`.
 6. **Manifest**: `cubby.json` needs name, title, description, icon;
    category and tags are optional but power the discovery site's search
    and chips. Then `npm run build:manifest` regenerates `sites.json`

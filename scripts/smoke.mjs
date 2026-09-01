@@ -434,6 +434,53 @@ await test('static: root llms.txt is served, not the SPA fallback', async () => 
   assert.ok(!/<!doctype html|<html/i.test(body), 'not the index.html fallback')
 })
 
+// Permalinks: hello declares one on hello_guestbook keyed by record id, so
+// /hello/<id> must come back as the app shell with that record's OG tags.
+await test('permalinks: record page serves per-record OG tags', async () => {
+  const record = await cubby.db.collection('guestbook').create({
+    message: '**Bold** [plans](https://example.com) & more <script>alert(1)</script>',
+    user: testUser.id,
+  })
+  try {
+    const res = await fetch(`${BASE}/hello/${record.id}`)
+    assert.equal(res.status, 200)
+    assert.ok((res.headers.get('content-type') || '').includes('text/html'))
+    const html = await res.text()
+    assert.ok(html.includes(`<base href="/hello/" />`), 'base tag injected for relative assets')
+    const og = (name) =>
+      html.match(new RegExp(`(?:property|name)="${name}"\\s+content="([^"]*)"`))?.[1] || ''
+    assert.ok(og('og:title').includes('Bold plans'), 'markdown stripped from the title')
+    assert.ok(!og('og:description').includes('**'), 'emphasis markers stripped')
+    assert.ok(!og('og:description').includes(']('), 'links reduced to their labels')
+    assert.ok(!html.includes('<script>alert'), 'record content is escaped, not injected')
+    assert.ok(og('og:url').endsWith(`/hello/${record.id}`), 'og:url is the permalink')
+
+    // Unfurlers commonly probe with HEAD; a GET registration must serve it.
+    const head = await fetch(`${BASE}/hello/${record.id}`, { method: 'HEAD' })
+    assert.equal(head.status, 200)
+  } finally {
+    await cubby.db.collection('guestbook').delete(record.id)
+  }
+})
+
+await test('permalinks: static files, app root, and unknown slugs behave', async () => {
+  // Dot-bearing segments fall through to real files with real content types.
+  const css = await fetch(`${BASE}/hello/style.css`)
+  assert.equal(css.status, 200)
+  assert.ok((css.headers.get('content-type') || '').includes('text/css'))
+
+  // The bare app root is not matched by the {slug} route at all.
+  const root = await fetch(`${BASE}/hello/`)
+  assert.equal(root.status, 200)
+  assert.ok(!(await root.text()).includes('<base href='), 'app root untouched by the hook')
+
+  // Unknown slugs 404 (no unfurl for crawlers) but still carry the shell so
+  // humans land in the app's own not-found UI.
+  const missing = await fetch(`${BASE}/hello/nonexistent-slug-xyz`)
+  assert.equal(missing.status, 404)
+  assert.ok((await missing.text()).includes(`<base href="/hello/" />`))
+})
+
 // Clear rate stamps so smoke reruns inside the rate window do not flake,
 // then pre-seed an expired stamp for the primary caller so the chat test
 // exercises the atomic UPDATE-claim path (not just first-time creation).

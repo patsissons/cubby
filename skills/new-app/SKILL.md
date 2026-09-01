@@ -60,6 +60,44 @@ Query strings on the intact path (`/<name>/?x=y`) do reach the app, but the
 hash is the conservative home for shareable URL state since it also
 composes with hash routes.
 
+The one exception is a declared permalink route (next section).
+
+## Permalinks (server-rendered OG pages, opt-in)
+
+When individual records deserve shareable links that unfurl in messaging
+apps (`/<name>/<slug>` with per-record OpenGraph tags — crawlers don't run
+JS), declare in `cubby.json`:
+
+```json
+"permalink": {
+  "collection": "<name>_events",      // full collection name (required)
+  "param": "slug",                    // record field matched to the path segment
+  "filter": "published = true",       // optional, ANDed with the match
+  "title": "{title}",                 // {field} templates; markdown-stripped
+  "description": "{body}",            // stripped + clamped ~150 chars
+  "image": "og_image",                // optional file field on the record
+  "imageThumb": "1200x630"            // optional thumb variant
+}
+```
+
+The platform hook (`pb_hooks/permalinks.pb.js`) serves the app's own
+index.html at `GET /<name>/{slug}` with the OG tags rewritten from the
+record; the app hydrates from `location.pathname`. Requirements:
+
+- The index.html must ship the full static OG block (copy from
+  `pb_public/hello/index.html`) — the build fails otherwise.
+- Slug fields must match `^[a-z0-9][a-z0-9-]*$` (dot-bearing segments are
+  served as static files instead).
+- The served shell gets `<base href="/<name>/">` injected, so ALL internal
+  links in the app must be absolute (`/<name>/#/edit/x`, never `#/edit/x`).
+- Missing records serve the shell with 404: handle a not-found state in the
+  app for the pathname route.
+- Routes register at boot: a NEW permalink declaration needs a local dev
+  restart (deployed: PocketHost power cycle) before `/<name>/<slug>` works.
+
+`hello` demos it: `/hello/<guestbook-record-id>`. Details in
+`docs/architecture.md` § Permalinks.
+
 ## The cubby API
 
 ### Loading it: tag order IS the dependency declaration

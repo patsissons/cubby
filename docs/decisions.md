@@ -345,3 +345,29 @@ which is grouping rather than correctness: stamps hash the referenced asset
 files' bytes, not the page HTML. Content is a pure function of manifests and
 config -- no dates, no hashes -- because CI's drift check demands byte-stable
 rebuilds.
+
+## Permalinks are a manifest-driven platform hook, not per-app hooks
+
+Link unfurling (Signal, iMessage) needs server-rendered OG tags — those
+crawlers do not execute JS — which broke "routing (there is none)" for any
+app with shareable per-record pages. The obvious per-app fix, an app hook
+file in `pb_hooks/`, would put app code in a platform directory and violate
+forkability (deployments must never edit platform files). Instead the
+platform ships one generic hook, `permalinks.pb.js`, driven by a `permalink`
+block in each app's committed `cubby.json` — the same
+hooks-read-app-manifests idiom the AI policy already uses. Route
+registration happens at boot (a restart per new permalink app is the
+accepted cost, matching how hooks deploy anyway); everything else is read
+per request so content edits show up without one.
+
+Injection rewrites the app's existing static OG tags in place rather than
+templating a separate shell: the static block is the fallback for the app
+root, the build's origin rewrite keeps it fork-correct, and a build check
+fails any permalink app missing the block, so the regexes always have a
+target. `<base href>` is injected because the shell's relative asset URLs
+would otherwise resolve under the slug; the documented price is that
+permalink apps write internal links absolute. Slugs are dot-free by
+contract so real static files fall through to normal file serving, and
+misses return the shell with a 404 plus `no-store` — humans get the app's
+not-found UI, crawlers refuse to unfurl dead links, and the CDN caches
+neither mistake.

@@ -4,7 +4,7 @@ One repo deploys to one PocketHost (PocketBase) instance and hosts many tiny
 static apps. This page covers how each piece works and shows a usage example
 for every public foundation method.
 
-## Routing (there is none)
+## Routing (almost none)
 
 PocketBase serves `pb_public/` statically. `/<name>/` resolves to
 `pb_public/<name>/index.html` natively; zero hook code. Missing paths fall
@@ -12,11 +12,61 @@ back to the root `index.html` (the discovery site), which means:
 
 **Apps must use hash routing (`#/page`) for internal navigation.** A deep
 link like `/myapp/settings` does not reach your app; `/myapp/#/settings`
-does. The `_template` app ships a minimal hash router.
+does. The `_template` app ships a minimal hash router. The one exception is
+a declared permalink route (next section).
 
 Reserved top-level names (see `cubby.config.json` reservedNames): `api`, `_`,
 `js`, `_template`, `index.html`, `sites.json`, `llms.txt`,
 `cubby.config.json`. The `/_cubby/*` route prefix is used by server hooks.
+
+### Permalinks: the one exception
+
+Messaging-app crawlers do not execute JS, so a shareable page that should
+unfurl (OpenGraph title/description/image) cannot be client-rendered. An app
+opts into server-rendered permalinks by declaring, in its `cubby.json`:
+
+```json
+"permalink": {
+  "collection": "hang_events",
+  "param": "slug",
+  "filter": "published = true",
+  "title": "{title}",
+  "description": "{body}",
+  "image": "og_image",
+  "imageThumb": "1200x630"
+}
+```
+
+`pb_hooks/permalinks.pb.js` then registers `GET /<app>/{slug}`: the segment
+is matched against the record field `param` (default `slug`, ANDed with the
+optional `filter`), and the app's own `index.html` is served with `<title>`,
+`og:title`, `og:description`, `og:url`, `og:image`, and the meta description
+rewritten from the record (`{field}` templates; title and description are
+markdown-stripped, description clamped to ~150 chars, everything escaped).
+`image` names a file field on the record; without one the app's static
+`og:image` stands. The client app hydrates from `location.pathname` as usual.
+
+Rules of the road:
+
+- Slugs are `^[a-z0-9][a-z0-9-]*$` — dot-bearing segments (`style.css`,
+  `llms.txt`) fall through to real static files, so constrain the
+  collection's slug field to that pattern and never ship extensionless
+  top-level files in a permalink app.
+- Missing/filtered-out records serve the shell with HTTP 404 and no caching:
+  crawlers get no unfurl, humans get the app's own not-found UI.
+- The shell gets `<base href="/<app>/">` injected so its relative asset URLs
+  resolve; internal links in a permalink app must therefore be absolute
+  (`/myapp/#/edit/x`, never a bare `#/edit/x` or `page.html`).
+- Routes are registered at boot from committed manifests: declaring a
+  permalink in a new app needs a server restart (PocketHost: power cycle),
+  like any hook change. Manifest, shell, and record are read per request.
+- Responses carry `Cache-Control: public, max-age=300` (hits) or `no-store`
+  (misses) to bound CDN staleness explicitly.
+- The build fails any app that declares a permalink without shipping the full
+  OG tag block in its `index.html` (copy it from `pb_public/hello/`).
+
+`hello` demos the feature: `/hello/<guestbook-record-id>` is a server-rendered
+OG page for that entry.
 
 ## Modules and load order
 

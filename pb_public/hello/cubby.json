@@ -11,6 +11,12 @@
     "rooms",
     "ai"
   ],
+  "permalink": {
+    "collection": "hello_guestbook",
+    "param": "id",
+    "title": "{message}",
+    "description": "{message}"
+  },
   "ai": {
     "models": ["gemini-flash"],
     "maxChars": 500,

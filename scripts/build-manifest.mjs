@@ -83,6 +83,46 @@ if (origin) {
   if (rewritten) console.log(`rewrote og origins/site_name for ${rewritten} page(s)`)
 }
 
+// Permalink declarations (cubby.json "permalink") make the server rewrite
+// the app's OG tags in place per record, so the tags must exist to rewrite.
+// Fail the build naming the app rather than shipping pages that silently
+// unfurl with nothing.
+{
+  const requiredTags = [
+    ['<title>', /<title>[^<]*<\/title>/],
+    ['og:title', /property="og:title"\s+content="/],
+    ['og:description', /property="og:description"\s+content="/],
+    ['og:url', /property="og:url"\s+content="/],
+    ['og:image', /property="og:image"\s+content="/],
+    ['meta description', /name="description"\s+content="/],
+  ]
+  const problems = []
+  for (const entry of readdirSync(publicDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const manifestPath = path.join(publicDir, entry.name, 'cubby.json')
+    if (!existsSync(manifestPath)) continue
+    let manifest = {}
+    try {
+      manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+    } catch {
+      continue // already reported above for visible apps
+    }
+    if (!manifest.permalink?.collection) continue
+    const page = path.join(publicDir, entry.name, 'index.html')
+    const html = existsSync(page) ? readFileSync(page, 'utf8') : ''
+    for (const [label, re] of requiredTags) {
+      if (!re.test(html)) problems.push(`${entry.name}: missing ${label}`)
+    }
+  }
+  if (problems.length) {
+    console.error(
+      `apps declaring a permalink must ship the full OG tag block in index.html ` +
+        `(copy it from pb_public/hello/index.html):\n  ${problems.join('\n  ')}`
+    )
+    process.exit(1)
+  }
+}
+
 // JSON-LD (schema.org): the discovery site advertises a WebSite plus an
 // ItemList of visible apps; each visible app advertises a WebApplication
 // built from its cubby.json. The build owns exactly one block per page,
