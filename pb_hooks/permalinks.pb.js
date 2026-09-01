@@ -70,8 +70,12 @@ function servePermalink(e) {
   shell = setMeta(shell, 'og:url', `${origin}/${app}/${slug}`)
   const file = pl.image ? record.getString(pl.image) : ''
   if (file) {
-    const thumb = pl.imageThumb ? `?thumb=${pl.imageThumb}` : ''
-    const fileUrl = `${origin}/api/files/${pl.collection}/${record.id}/${file}${thumb}`
+    // Content stamp: unfurl crawlers and CDNs cache og:image aggressively,
+    // so key the URL to the record's last edit (falls back to a stable
+    // filename-only stamp when the collection has no `updated` field).
+    const stamp = $security.md5(`${file}:${record.getString('updated')}`).slice(0, 8)
+    const thumb = pl.imageThumb ? `thumb=${pl.imageThumb}&` : ''
+    const fileUrl = `${origin}/api/files/${pl.collection}/${record.id}/${file}?${thumb}v=${stamp}`
     shell = setMeta(shell, 'og:image', lib.escapeHtml(fileUrl))
   }
   // else: the build already rewrote the static og:image to an absolute URL.

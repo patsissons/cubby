@@ -44,7 +44,9 @@ optional `filter`), and the app's own `index.html` is served with `<title>`,
 rewritten from the record (`{field}` templates; title and description are
 markdown-stripped, description clamped to ~150 chars, everything escaped).
 `image` names a file field on the record; without one the app's static
-`og:image` stands. The client app hydrates from `location.pathname` as usual.
+`og:image` stands. The file URL carries a `v=<hash>` stamp keyed to the
+record's `updated` timestamp so re-uploads break through crawler and CDN
+caches. The client app hydrates from `location.pathname` as usual.
 
 Rules of the road:
 
