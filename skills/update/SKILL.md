@@ -6,8 +6,8 @@ description: Pull the latest cubby platform updates from upstream into a deploym
 
 # Updating a deployment from upstream
 
-Merges upstream platform changes (foundation, hooks, platform migrations,
-discovery site, skills, docs) into a deployment repo, rebuilds artifacts
+Merges upstream platform changes (foundation, platform hooks, platform
+migrations, discovery site, skills, docs) into a deployment repo, rebuilds artifacts
 against the deployment's own config, and ships them to the instance.
 
 ## Preconditions
@@ -51,7 +51,7 @@ against the deployment's own config, and ships them to the instance.
    |---|---|
    | `cubby.config.json` (repo root) | Keep the deployment's identity values (name, title, domain, instanceUrl, oauthProviders) AND its model selection: entries the deployment removed stay removed, entries it added stay. From upstream adopt structure only: new config keys, refreshed ids for `ai.models` entries the deployment kept, additions to reservedNames. |
    | `pb_public/js/*`, `pb_public/css/*`, `pb_public/sites.json`, `pb_public/cubby.config.json` | Build artifacts (the root `cubby.config.json` is NOT one; see the row above): take either side, step 4 regenerates them. Minified bundles conflict on nearly every upstream change, and there are now several of them, so do not hand-merge: `git checkout --theirs pb_public/js pb_public/css && npm run build && git add pb_public/js pb_public/css`. Resolve `foundation/src/**` properly; the artifacts fall out of the build. |
-   | `pb_public/<your apps>/`, `pb_migrations/*_app_*` | Keep the deployment's; upstream never touches them. |
+   | `pb_public/<your apps>/`, `pb_migrations/*_app_*`, `pb_hooks/apps/<your apps>/` | Keep the deployment's; upstream never touches them. |
    | Any other platform file | Take upstream. A genuine conflict here means platform edits leaked into the deployment (forkability violation): adopt upstream now, port the local change to a cubby PR later. |
 
    `git add` each resolved file; the merge concludes with the single commit

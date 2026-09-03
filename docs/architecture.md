@@ -19,6 +19,11 @@ Reserved top-level names (see `cubby.config.json` reservedNames): `api`, `_`,
 `js`, `_template`, `index.html`, `sites.json`, `llms.txt`,
 `cubby.config.json`. The `/_cubby/*` route prefix is used by server hooks.
 
+App-specific server hooks live at `pb_hooks/apps/<name>/*.pb.js` and are
+loaded at boot by the platform shim `pb_hooks/apps.pb.js` (PocketBase itself
+only auto-loads top-level hook files). App hook routes are namespaced
+`/_cubby/apps/<name>/...`; see docs/new-app.md for the rules.
+
 ### Permalinks: the one exception
 
 Messaging-app crawlers do not execute JS, so a shareable page that should

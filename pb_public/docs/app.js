@@ -43,7 +43,7 @@ function wireDiagram() {
       { id: 'platform', lane: 'browser', column: 3, label: 'platform.js', note: 'One shared PocketBase client behind `db`, `fs`, `ai`, `rooms`, `identity`.' },
       { id: 'static', lane: 'instance', column: 1, label: 'pb_public', note: 'Static files, CDN-cached per URL for ~4h. Asset refs carry content hashes.' },
       { id: 'api', lane: 'instance', column: 2, label: 'PocketBase API', note: 'REST plus a realtime SSE stream.' },
-      { id: 'hooks', lane: 'instance', column: 3, label: 'pb_hooks', note: 'Server-side JS: the AI proxy and the rooms sweeper.' },
+      { id: 'hooks', lane: 'instance', column: 3, label: 'pb_hooks', note: 'Server-side JS: platform hooks (AI proxy, rooms sweeper) plus per-app hooks under `apps/<app>/`.' },
       { id: 'collections', lane: 'data', column: 1, label: 'collections', note: 'Per-app tables, namespaced `<app>_<name>`.' },
       { id: 'files', lane: 'data', column: 2, label: 'file storage', note: 'The `files` collection, one row per path.' },
       { id: 'provider', lane: 'data', column: 3, label: 'AI provider', note: 'Never called from the browser: keys stay on the instance.' },

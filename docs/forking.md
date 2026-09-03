@@ -7,19 +7,21 @@ cubby; your apps live in your deployment repo.
 ## The two repos
 
 - **cubby** (this repo, public, a GitHub template): the platform skeleton.
-  Foundation, hooks, platform migrations, discovery site, `_template`, the
-  hello example, scripts, deploy workflow, agent skills, docs. It also
-  deploys itself to cubby.pockethost.io as the live demo of the example apps.
+  Foundation, platform hooks (including the app-hook loader shim), platform
+  migrations, discovery site, `_template`, the hello example, scripts, deploy
+  workflow, agent skills, docs. It also deploys itself to cubby.pockethost.io
+  as the live demo of the example apps.
 - **your deployment repo** (usually private): your real cubby system,
-  created from the template. Adds your apps (`pb_public/<name>/`) and app
-  migrations, and sets `cubby.config.json` to your instance. Everything else
-  stays untouched.
+  created from the template. Adds your apps (`pb_public/<name>/`), their app
+  migrations and app hooks (`pb_hooks/apps/<name>/`), and sets
+  `cubby.config.json` to your instance. Everything else stays untouched.
 
 The forkability rule that makes upstream merges painless: all
 deployment-specific state lives in exactly two places, `cubby.config.json`
-and app directories (plus their app migrations). Platform files are never
-edited downstream. If something forces you to edit a platform file, that is
-an upstream bug: fix it in cubby and merge it down.
+and app-owned directories (`pb_public/<name>/` plus their app migrations and
+`pb_hooks/apps/<name>/` hooks). Platform files are never edited downstream.
+If something forces you to edit a platform file, that is an upstream bug: fix
+it in cubby and merge it down.
 
 ## Creating your deployment
 
@@ -44,8 +46,8 @@ git merge upstream/main     # platform updates; conflicts should be rare
 npm run build               # rebuild artifacts after merges
 ```
 
-Because downstream repos only add files (apps, app migrations) and edit
-`cubby.config.json`, merges are usually clean. If a merge conflicts anywhere
+Because downstream repos only add files (apps, app migrations, app hooks)
+and edit `cubby.config.json`, merges are usually clean. If a merge conflicts anywhere
 else, treat it as a signal that deployment state leaked into a platform file.
 The update skill (skills/update/SKILL.md, also `/cubby:update`)
 automates the full flow: preview, merge, conflict ownership rules, rebuild,

@@ -306,10 +306,52 @@ uses `my_app_items`). Copy the shape from
 Migrations run automatically when the local dev server (or the deployed
 instance) restarts.
 
+## App hooks (optional, server-side)
+
+An app that needs server-side behavior (fetching external APIs with secret
+keys, writes that clients must not be able to make) may ship hooks at
+`pb_hooks/apps/<name>/*.pb.js`. The platform shim (`pb_hooks/apps.pb.js`)
+requires every such file at boot; PocketBase does not auto-load nested hook
+files itself. Rules:
+
+- Everything for the app lives under `pb_hooks/apps/<name>/` — `.pb.js`
+  files register hooks/routes, other `.js` files are require-only helpers.
+- Namespace routes as `/_cubby/apps/<name>/...`.
+- Secrets come from instance env vars via `$os.getenv` (PocketHost Secrets
+  tab in production, exported before `npm run dev` locally). Never put a
+  secret in the app directory: everything under `pb_public/` is served.
+- Hooks bypass collection rules, so a collection written only by a hook can
+  set `createRule`/`updateRule`/`deleteRule` to `null` for real server-only
+  write enforcement.
+- The JSVM is synchronous: no fetch/Promises/timers; outbound HTTP is
+  `$http.send` (buffered).
+- Platform helpers stay requireable via the same ``require(`${__hooks}/lib/...`)``
+  idiom the platform hooks use.
+- Hook changes need a server restart (PocketHost: power cycle) to register.
+
+The whole shape, in one file (`pb_hooks/apps/my-app/my-app.pb.js`):
+
+```js
+/// <reference path="../../../.pb/pb_data/types.d.ts" />
+routerAdd('GET', '/_cubby/apps/my-app/lookup', (e) => {
+  const key = $os.getenv('MY_APP_API_KEY')
+  if (!key) return e.json(503, { code: 'not_configured', message: 'MY_APP_API_KEY is not set' })
+  const res = $http.send({
+    url: `https://api.example.com/lookup?q=${encodeURIComponent(e.request.url.query().get('q') || '')}`,
+    headers: { Authorization: `Bearer ${key}` },
+    timeout: 30,
+  })
+  if (res.statusCode < 200 || res.statusCode >= 300) {
+    return e.json(502, { code: 'upstream', message: `upstream returned ${res.statusCode}` })
+  }
+  return e.json(200, res.json)
+})
+```
+
 ## What NOT to touch
 
 - `foundation/`, `pb_public/js/`, `pb_public/css/` (built artifacts)
-- `pb_hooks/`
+- `pb_hooks/` outside your own `pb_hooks/apps/<name>/` directory
 - `pb_migrations/*_platform_*`
 - other apps' directories
 - `cubby.config.json` (unless the change is explicitly requested)
@@ -333,8 +375,9 @@ not part of adding an app.
 
 ## PR shape
 
-One app directory + optional `_app_<name>_` migrations + the regenerated
-build artifacts: `sites.json`, the llms.txt files (root and the app's own),
+One app directory + optional `_app_<name>_` migrations + optional
+`pb_hooks/apps/<name>/` hooks + the regenerated build artifacts:
+`sites.json`, the llms.txt files (root and the app's own),
 and the root `pb_public/index.html` (its JSON-LD app list grows).
 `pb_public/cubby.config.json` is a build-time copy of the root config:
 include it if `npm run build` refreshed it, never edit it by hand. Nothing

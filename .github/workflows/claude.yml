@@ -58,5 +58,5 @@ jobs:
           trigger_phrase: "@claude"
           # Automation mode (explicit prompt) only for labeled issues;
           # comments run interactive mode.
-          prompt: ${{ github.event_name == 'issues' && 'Implement the app described in this issue using the new-app skill (skills/new-app/SKILL.md) and open a pull request. The PR may only touch the new app directory under pb_public/, optional pb_migrations/*_app_<name>_* migrations, and the regenerated build artifacts (sites.json, the root and app llms.txt files, and the root pb_public/index.html JSON-LD block). Run npm ci and npm run build before committing so artifacts are fresh.' || '' }}
+          prompt: ${{ github.event_name == 'issues' && 'Implement the app described in this issue using the new-app skill (skills/new-app/SKILL.md) and open a pull request. The PR may only touch the new app directory under pb_public/, optional pb_migrations/*_app_<name>_* migrations, optional pb_hooks/apps/<name>/ app hooks, and the regenerated build artifacts (sites.json, the root and app llms.txt files, and the root pb_public/index.html JSON-LD block). Run npm ci and npm run build before committing so artifacts are fresh.' || '' }}
           claude_args: "--max-turns 40"

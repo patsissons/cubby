@@ -24,7 +24,7 @@
     <script src="/js/draw.js?v=71872b6b" defer></script>
     <script src="/js/graph.js?v=4a9d4a16" defer></script>
     <script src="/js/preview.js?v=e3d8c254" defer></script>
-    <script src="app.js?v=cb96eb84" defer></script>
+    <script src="app.js?v=2267564f" defer></script>
     <script type="application/ld+json" data-cubby-jsonld>{"@context":"https://schema.org","@type":"WebApplication","name":"Docs","description":"Learn cubby on a single page: the platform, every API, and how to run your own.","url":"https://cubby.pockethost.io/docs/","applicationCategory":"reference","keywords":"documentation, guide, learning","isPartOf":{"@type":"WebSite","name":"Cubby","url":"https://cubby.pockethost.io/"}}</script>
   </head>
   <body>
@@ -45,7 +45,8 @@
             One GitHub repo deploys to one
             <a href="https://pockethost.io">PocketHost</a> (PocketBase) instance and hosts many
             tiny static web apps. Each app is a directory of plain html/js/css: no build step, no
-            framework, no server code of its own.
+            framework, and usually no server code of its own (an app that needs some ships hooks
+            under <code>pb_hooks/apps/&lt;app&gt;/</code>).
           </p>
           <div class="diagram" role="img" aria-label="Repo deploys to instance which serves apps">
             <div class="box">repo<br /><small>pb_public/&lt;app&gt;/ + hooks + migrations</small></div>
@@ -540,9 +541,10 @@ npm run dev         # local PocketBase + watch build at localhost:8090</code></p
               anything, write only yours.
             </li>
             <li>
-              <strong>Do not touch the platform.</strong> The foundation, hooks, platform
-              migrations, and other apps stay as upstream ships them. That is what keeps
-              platform updates a clean merge.
+              <strong>Do not touch the platform.</strong> The foundation, platform hooks,
+              platform migrations, and other apps stay as upstream ships them; an app's own
+              server hooks live in its <code>pb_hooks/apps/&lt;app&gt;/</code> directory. That is
+              what keeps platform updates a clean merge.
             </li>
           </ul>
         </section>

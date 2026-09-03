@@ -82,7 +82,9 @@ foundation/src/         cubby client source (esbuild -> pb_public/js/)
   markdown/             opt-in renderer and editor
 pb_public/<app>/        one directory per app (html/js/css + cubby.json)
 pb_public/index.html    discovery site
-pb_hooks/               AI proxy + rooms sweeper (PocketBase JSVM)
+pb_hooks/               platform hooks (PocketBase JSVM): AI proxy, rooms
+                        sweeper, stats, permalinks, app-hook loader
+pb_hooks/apps/<app>/    app-owned server hooks, loaded by the platform shim
 pb_migrations/          platform + app collections
 scripts/                dev server, scaffolder, manifest, smoke test
 skills/                 agent skills (init, deploy, new-app, update)

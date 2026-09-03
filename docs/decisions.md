@@ -355,7 +355,10 @@ file in `pb_hooks/`, would put app code in a platform directory and violate
 forkability (deployments must never edit platform files). Instead the
 platform ships one generic hook, `permalinks.pb.js`, driven by a `permalink`
 block in each app's committed `cubby.json` — the same
-hooks-read-app-manifests idiom the AI policy already uses. Route
+hooks-read-app-manifests idiom the AI policy already uses. (The forkability
+premise was later relaxed by the `pb_hooks/apps/<slug>/` carve-out — see the
+app-hooks decision below — but permalinks stay manifest-driven regardless:
+zero code per app is still the right cost for this feature.) Route
 registration happens at boot (a restart per new permalink app is the
 accepted cost, matching how hooks deploy anyway); everything else is read
 per request so content edits show up without one.
@@ -371,3 +374,26 @@ contract so real static files fall through to normal file serving, and
 misses return the shell with a 404 plus `no-store` — humans get the app's
 not-found UI, crawlers refuse to unfurl dead links, and the CDN caches
 neither mistake.
+
+## App hooks load from pb_hooks/apps/<slug>/ via a platform shim
+
+Manifest-driven platform hooks cover behavior that is the same shape for
+every app, but some apps need server code of their own: calling an external
+API with a secret key, or writes no client may be trusted to make. PocketBase
+only auto-loads `*.pb.js` at the top level of `pb_hooks/`, so before this
+there was no sanctioned home for such code — the choice was "put app code in
+a platform directory" (forkability violation) or "the app cannot exist".
+
+The resolution is a carve-out, not a reversal: `pb_hooks/apps.pb.js` is a
+tiny platform shim that at boot requires every `pb_hooks/apps/<slug>/*.pb.js`.
+The shim is platform (generic, never edited per app); each nested directory
+is app-owned, ships in the app's PR, and merges cleanly downstream exactly
+like `pb_public/<slug>/` and the app's migrations. Loading is wrapped in a
+per-app catch so one app's broken hook logs and moves on instead of taking
+the instance down. Routes are namespaced `/_cubby/apps/<slug>/...`, secrets
+come from instance env vars (`$os.getenv`; nothing under `pb_public/` can
+hold one, it is all served), and because hooks bypass collection API rules, a
+hook-written collection can set its client write rules to `null` for real
+server-only write enforcement. Manifest-driven platform hooks remain the
+preferred shape when a need generalizes; `pb_hooks/apps/` is for the code
+that is genuinely one app's own.

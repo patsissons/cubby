@@ -42,10 +42,22 @@ The short version: `npm run new-app <name>`, edit, `npm run dev`, ship.
 7. **Verify**: `npm run dev`, open `http://localhost:8090/my-app/`, exercise
    the app, check the discovery site lists it.
 
+## App hooks
+
+An app that needs server-side behavior (secret API keys, server-only writes)
+ships hooks at `pb_hooks/apps/my-app/*.pb.js`; the platform shim
+(`pb_hooks/apps.pb.js`) loads them at boot, since PocketBase does not
+auto-load nested hook files. Namespace routes as `/_cubby/apps/my-app/...`,
+read secrets from instance env vars with `$os.getenv`, and remember the JSVM
+is synchronous (`$http.send`, no fetch/Promises). Hooks bypass collection
+rules, so a hook-written collection can set its client write rules to `null`.
+See the worked example in `skills/new-app/SKILL.md` ("App hooks").
+
 ## What not to touch
 
-The foundation (`foundation/`, `pb_public/js/`), server hooks (`pb_hooks/`),
-platform migrations (`pb_migrations/*_platform_*`), other apps' directories,
+The foundation (`foundation/`, `pb_public/js/`), server hooks (`pb_hooks/`
+outside your own `pb_hooks/apps/my-app/`), platform migrations
+(`pb_migrations/*_platform_*`), other apps' directories,
 and `cubby.config.json` (unless the change is the point). If an app seems to
 need a platform change, that change belongs upstream in cubby: see
 `docs/forking.md`.
@@ -53,6 +65,7 @@ need a platform change, that change belongs upstream in cubby: see
 ## PR shape
 
 One app directory (`pb_public/my-app/`), optional app migrations
-(`pb_migrations/*_app_my_app_*.js`), and the regenerated build artifacts:
+(`pb_migrations/*_app_my_app_*.js`), optional app hooks
+(`pb_hooks/apps/my-app/`), and the regenerated build artifacts:
 `sites.json`, the llms.txt files (root and the app's own), and the root
 `pb_public/index.html` (its JSON-LD app list grows). Nothing else.
