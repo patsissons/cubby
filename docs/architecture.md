@@ -763,14 +763,18 @@ Set `PB_HTTP=127.0.0.1:8091` to use another port.
 `deploy.yml` runs on push to main: `npm ci`, rebuild the bundles +
 `sites.json` + the llms.txt files + the JSON-LD blocks + the config copy,
 fail if committed artifacts drifted, then
-sync via PocketHost's phio CLI (SFTP, port 2222, Ed25519 deploy key).
+sync via PocketHost's phio CLI (SFTP, port 2222, Ed25519 deploy key), then
+power cycle the instance through the mothership API and health-check it back
+up, so hooks, migrations, and permalink routes registered at boot are live
+when the run goes green.
 Secrets: `PHIO_USERNAME`, `PHIO_PASSWORD`, `PHIO_INSTANCE_NAME`. The deploy
 step is skipped when secrets are absent, so the template ships inert.
 
 Manual deploys: `npx phio login`, `npx phio link <instance>`, `npm run deploy`.
 phio syncs `pb_public/`, `pb_hooks/`, and `pb_migrations/` and never touches
 `pb_data`. PocketBase applies pending migrations automatically on restart;
-power-cycle the instance after the first deploy (see decisions.md).
+after a manual deploy, power-cycle the instance yourself (see decisions.md) —
+only the CI workflow restarts it for you.
 
 Fallback without phio: any SFTP mirror against `ftp.pockethost.io:2222`
 (username = PocketHost account email, auth via an SSH key registered in the

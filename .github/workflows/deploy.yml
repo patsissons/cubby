@@ -1,6 +1,7 @@
 # Deploys pb_public, pb_hooks, and pb_migrations to the PocketHost instance
 # on every push to main, after verifying that committed build artifacts match
-# a fresh build.
+# a fresh build, then power cycles the instance so new hooks, migrations,
+# and permalink routes register.
 #
 # Ships inert in the template: the deploy step runs only when the PHIO_*
 # secrets exist. Set PHIO_USERNAME, PHIO_PASSWORD, and PHIO_INSTANCE_NAME in
@@ -68,6 +69,76 @@ jobs:
           chmod 600 ~/.config/phio-nodejs/phio_deploy_ed25519
           npm install -g phio tsx
           phio deploy -v
+
+      - name: Power cycle the instance
+        if: env.PHIO_USERNAME != ''
+        run: |
+          # Hooks, migrations, and permalink routes register at boot, so a
+          # deploy is not fully live until the instance restarts. The
+          # PocketHost dashboard's power toggle is PUT /api/instance/{id} on
+          # the mothership (a PocketBase app), authenticated with the same
+          # account phio uses. The UA header matters: the mothership sits
+          # behind Cloudflare rules that reject non-browser agents.
+          node - <<'EOF'
+          const BASE = 'https://pockethost-central.pockethost.io'
+          const HEADERS = {
+            'User-Agent': 'Mozilla/5.0 (compatible; cubby-deploy)',
+            'Content-Type': 'application/json',
+          }
+          const die = (msg) => {
+            console.error(msg)
+            process.exit(1)
+          }
+          const main = async () => {
+            let res = await fetch(`${BASE}/api/collections/users/auth-with-password`, {
+              method: 'POST',
+              headers: HEADERS,
+              body: JSON.stringify({
+                identity: process.env.PHIO_USERNAME,
+                password: process.env.PHIO_PASSWORD,
+              }),
+            })
+            if (!res.ok) die(`mothership login failed (${res.status})`)
+            const { token } = await res.json()
+            const auth = { ...HEADERS, Authorization: token }
+
+            const name = process.env.PHIO_INSTANCE_NAME
+            const filter = encodeURIComponent(`subdomain='${name}' || cname='${name}'`)
+            res = await fetch(`${BASE}/api/collections/instances/records?filter=${filter}`, { headers: auth })
+            if (!res.ok) die(`instance lookup failed (${res.status})`)
+            const { items } = await res.json()
+            if (!items.length) die(`no instance named "${name}" on this account`)
+            const id = items[0].id
+
+            const power = async (on) => {
+              const r = await fetch(`${BASE}/api/instance/${id}`, {
+                method: 'PUT',
+                headers: auth,
+                body: JSON.stringify({ id, fields: { power: on } }),
+              })
+              if (!r.ok) die(`power ${on ? 'on' : 'off'} failed (${r.status})`)
+              console.log(`power ${on ? 'on' : 'off'} ok`)
+            }
+            await power(false)
+            await new Promise((resolve) => setTimeout(resolve, 5000))
+            await power(true)
+
+            // Wake it and confirm it serves before calling the deploy done.
+            const url = require('./cubby.config.json').instanceUrl
+            for (let attempt = 1; attempt <= 12; attempt++) {
+              await new Promise((resolve) => setTimeout(resolve, 5000))
+              try {
+                const ping = await fetch(`${url}/api/health`, { headers: HEADERS })
+                console.log(`health check ${attempt}: ${ping.status}`)
+                if (ping.ok) return
+              } catch (err) {
+                console.log(`health check ${attempt}: ${err.message}`)
+              }
+            }
+            die('instance did not come back after power cycle')
+          }
+          main()
+          EOF
 
       - name: Deploy skipped (no credentials)
         if: env.PHIO_USERNAME == ''

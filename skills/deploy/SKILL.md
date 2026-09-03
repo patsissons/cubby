@@ -53,8 +53,9 @@ Verify:
 
 CI deploys: add repo secrets `PHIO_USERNAME` (account email), `PHIO_PASSWORD`,
 and `PHIO_INSTANCE_NAME`, and the bundled `.github/workflows/deploy.yml`
-starts deploying on every push to main. Without those secrets it only
-verifies the build.
+starts deploying on every push to main, power cycling the instance afterwards
+(with a health-check loop) so new hooks and migrations are live without a
+manual restart. Without those secrets it only verifies the build.
 
 ## 3. AI provider keys
 
@@ -112,12 +113,15 @@ deploy.yml: idea on your phone to live app with no laptop involved.
 ## Troubleshooting
 
 - Hooks 404 or collections missing after a deploy: the running process
-  predates the upload. Either power-cycle from the PocketHost dashboard's
-  power button (confirm it actually goes down first), or close every open
-  tab of the site (realtime SSE connections keep it awake) and let the
-  instance hibernate; the next request boots the new code. The mothership
-  API's power field does NOT stop a running container, and the documented
-  pb_hooks auto-restart does not fire for SFTP-written files.
+  predates the upload (CI deploys power cycle automatically; manual deploys
+  do not). Either power-cycle from the PocketHost dashboard's power button
+  (confirm it actually goes down first), or close every open tab of the site
+  (realtime SSE connections keep it awake) and let the instance hibernate;
+  the next request boots the new code. The dashboard button is
+  `PUT /api/instance/{id}` on the mothership — what deploy.yml calls — and
+  that is the endpoint that works; merely flipping the instance record's
+  power field via the collections API does NOT stop a running container, and
+  the documented pb_hooks auto-restart does not fire for SFTP-written files.
 - `provider_unconfigured`: the named env var is missing in instance Secrets
   (or the instance was not restarted after adding it).
 - OAuth popup errors: redirect URI mismatch; it must be exactly
