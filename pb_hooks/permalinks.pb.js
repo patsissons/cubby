@@ -26,6 +26,15 @@ function servePermalink(e) {
 
   const parts = e.request.url.path.split('/').filter(Boolean)
   const app = parts[0]
+
+  // Registering GET /<app>/ (the "home" permalink) makes Go's router treat
+  // it as a subtree pattern, so deeper paths that /<app>/{slug} cannot match
+  // (/app/data/x.json) land here too: anything beyond one segment is a real
+  // static file.
+  if (parts.length > 2) {
+    return e.fileFS($os.dirFS(publicDir), parts.join('/'))
+  }
+
   const pl = lib.loadAppPermalink(app)
 
   // GET /<app>/ (registered only when the manifest declares "home") serves
