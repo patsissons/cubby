@@ -17,8 +17,8 @@ cubby; your apps live in your deployment repo.
   `cubby.config.json` to your instance. Everything else stays untouched.
 
 The forkability rule that makes upstream merges painless: all
-deployment-specific state lives in exactly two places, `cubby.config.json`
-and app-owned directories (`pb_public/<name>/` plus their app migrations and
+deployment-specific state lives in `cubby.config.json` and the app-owned
+directories (`pb_public/<name>/` plus their app migrations and
 `pb_hooks/apps/<name>/` hooks). Platform files are never edited downstream.
 If something forces you to edit a platform file, that is an upstream bug: fix
 it in cubby and merge it down.

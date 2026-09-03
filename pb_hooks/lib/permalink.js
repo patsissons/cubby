@@ -13,7 +13,8 @@
  *     "title": "{title}",              template: {field} -> record field value
  *     "description": "{body}",         template; markdown-stripped, clamped ~150 chars
  *     "image": "og_image",             optional file field name
- *     "imageThumb": "1200x630"         optional ?thumb= variant for the file URL
+ *     "imageThumb": "1200x630",        optional ?thumb= variant for the file URL
+ *     "home": "balanced"               optional: GET /<app>/ serves this slug's OG
  *   }
  *
  * @param {string} app
@@ -38,6 +39,7 @@ function loadAppPermalink(app) {
     description: str(pl.description, ''),
     image: str(pl.image, ''),
     imageThumb: str(pl.imageThumb, ''),
+    home: str(pl.home, ''),
   }
 }
 

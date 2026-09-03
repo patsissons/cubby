@@ -38,7 +38,8 @@ opts into server-rendered permalinks by declaring, in its `cubby.json`:
   "title": "{title}",
   "description": "{body}",
   "image": "og_image",
-  "imageThumb": "1200x630"
+  "imageThumb": "1200x630",
+  "home": "featured"
 }
 ```
 
@@ -52,6 +53,13 @@ markdown-stripped, description clamped to ~150 chars, everything escaped).
 `og:image` stands. The file URL carries a `v=<hash>` stamp keyed to the
 record's `updated` timestamp so re-uploads break through crawler and CDN
 caches. The client app hydrates from `location.pathname` as usual.
+
+The optional `home` names a slug whose OG data also serves the app root:
+with it declared, `GET /<app>/` goes through the same handler pinned to that
+slug, so the bare app URL unfurls with real content (point it at a featured
+or default share). The root never 404s — when the home record does not exist
+yet, the untouched shell with its static OG block is served — and `og:url`
+stays the canonical `/<app>/`.
 
 Rules of the road:
 

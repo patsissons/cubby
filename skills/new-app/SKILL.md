@@ -76,7 +76,8 @@ JS), declare in `cubby.json`:
   "title": "{title}",                 // {field} templates; markdown-stripped
   "description": "{body}",            // stripped + clamped ~150 chars
   "image": "og_image",                // optional file field on the record
-  "imageThumb": "1200x630"            // optional thumb variant
+  "imageThumb": "1200x630",           // optional thumb variant
+  "home": "featured"                  // optional: GET /<name>/ serves this slug's OG
 }
 ```
 
