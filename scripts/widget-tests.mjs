@@ -1304,6 +1304,101 @@ await test('graph.destroy removes the diagram and its popover', () => {
   assert.equal(p.document.querySelector('.cubby-graph-popover'), null)
 })
 
+// --- share ------------------------------------------------------------------
+
+const SHARE_SCRIPTS = ['core.js', 'share.js']
+const SHARE_URL = 'https://cubby.test/app/thing'
+
+const mountShare = (opts = {}) => {
+  const p = page({ html: '<div id="host"></div>', scripts: SHARE_SCRIPTS })
+  const copied = []
+  Object.defineProperty(p.window.navigator, 'clipboard', {
+    value: { writeText: (text) => (copied.push(text), Promise.resolve()) },
+    configurable: true,
+  })
+  const share = p.cubby.share('#host', { url: SHARE_URL, ...opts })
+  return { p, share, copied }
+}
+
+await test('share renders three guest buttons; handlers add edit and delete', () => {
+  const { p } = mountShare()
+  assert.deepEqual(p.errors, [])
+  const labels = [...p.document.querySelectorAll('.cubby-share-btn')].map((b) =>
+    b.getAttribute('aria-label')
+  )
+  same(labels, [`share ${SHARE_URL}`, `QR code for ${SHARE_URL}`, `copy link to ${SHARE_URL}`])
+
+  const { p: p2 } = mountShare({ label: '/app/thing', onEdit: () => {}, onDelete: () => {} })
+  const labels2 = [...p2.document.querySelectorAll('.cubby-share-btn')].map((b) =>
+    b.getAttribute('aria-label')
+  )
+  same(labels2, [
+    'share /app/thing',
+    'QR code for /app/thing',
+    'copy link to /app/thing',
+    'edit /app/thing',
+    'delete /app/thing',
+  ])
+})
+
+await test('share without a url throws bad_request', () => {
+  const p = page({ html: '<div id="host"></div>', scripts: SHARE_SCRIPTS })
+  assert.throws(
+    () => p.cubby.share('#host'),
+    (err) => err instanceof p.cubby.CubbyError && err.code === 'bad_request'
+  )
+})
+
+await test('share copy button writes the url and flashes ok', async () => {
+  const { p, copied } = mountShare()
+  const copy = p.document.querySelector('[aria-label^="copy link"]')
+  copy.click()
+  await new Promise((r) => setTimeout(r, 0))
+  same(copied, [SHARE_URL])
+  assert.ok(copy.classList.contains('ok'))
+})
+
+await test('share button uses the native sheet when present, copy otherwise', async () => {
+  const { p, copied } = mountShare({ title: 'A Thing' })
+  const shared = []
+  Object.defineProperty(p.window.navigator, 'share', {
+    value: (data) => (shared.push(data), Promise.resolve()),
+    configurable: true,
+  })
+  p.document.querySelector('[aria-label^="share"]').click()
+  await new Promise((r) => setTimeout(r, 0))
+  same(shared, [{ title: 'A Thing', url: SHARE_URL }])
+  same(copied, [], 'native path must not also copy')
+
+  const { p: p2, copied: copied2 } = mountShare()
+  p2.document.querySelector('[aria-label^="share"]').click()
+  await new Promise((r) => setTimeout(r, 0))
+  same(copied2, [SHARE_URL], 'no navigator.share -> sharing degrades to copy')
+})
+
+await test('share QR button opens a dialog with the code and closes clean', () => {
+  const { p } = mountShare({ label: '/app/thing' })
+  p.document.querySelector('[aria-label^="QR"]').click()
+  const dialog = p.document.querySelector('dialog.cubby-share-qr')
+  assert.ok(dialog, 'dialog appended')
+  assert.ok(dialog.querySelector('img').src.startsWith('data:image/gif;base64,'), 'QR is a data URL')
+  assert.equal(dialog.querySelector('.cubby-share-qr-url').textContent, SHARE_URL)
+  assert.equal(dialog.querySelector('h2').textContent, '/app/thing')
+  dialog.querySelector('button').click()
+  dialog.dispatchEvent(new p.window.Event('close'))
+  assert.equal(p.document.querySelector('dialog.cubby-share-qr'), null, 'closing removes it')
+})
+
+await test('share edit/delete buttons call the handlers; destroy removes all', () => {
+  const calls = []
+  const { p, share } = mountShare({ onEdit: () => calls.push('edit'), onDelete: () => calls.push('delete') })
+  p.document.querySelector('[aria-label^="edit"]').click()
+  p.document.querySelector('[aria-label^="delete"]').click()
+  same(calls, ['edit', 'delete'])
+  share.destroy()
+  assert.equal(p.document.querySelector('.cubby-share'), null)
+})
+
 // --- style injection --------------------------------------------------------
 
 await test('injected styles are PREPENDED so the host stylesheet still wins', () => {

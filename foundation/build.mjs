@@ -11,6 +11,7 @@
 //   preview.js    hover-a-link iframe popover                 (needs core)
 //   draw.js       ephemeral shared marks                      (needs core; rooms optional)
 //   graph.js      node-and-edge diagrams in inline SVG        (needs core)
+//   share.js      share/QR/copy-link icon stack + edit/delete (needs core)
 //   foundation.js DEPRECATED all-in-one core+platform, kept for cached pages
 //
 // NOTE: `npm run dev` holds esbuild watch contexts built from THIS file as it
@@ -92,6 +93,8 @@ const MODULES = [
   // graph ships an ESM twin so its deterministic layout and its validation of
   // author mistakes are testable under plain Node.
   { name: 'graph', dir: 'graph', gz: 7, esm: 'index.js' },
+  // share's budget is mostly the vendored QR generator.
+  { name: 'share', dir: 'share', gz: 10 },
 ]
 
 const banner = (name) => ({ js: `/* cubby ${name} v${pkg.version} (${pkg.repository}) */` })

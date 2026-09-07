@@ -177,6 +177,7 @@ or paste-upload handler. Load it with one extra tag, after core.js
 <script src="/js/preview.js" defer></script>  <!-- hover-a-link page previews -->
 <script src="/js/draw.js" defer></script>     <!-- ephemeral shared scribbling -->
 <script src="/js/graph.js" defer></script>    <!-- inline-SVG node/edge diagrams -->
+<script src="/js/share.js" defer></script>    <!-- share/QR/copy-link icon stack -->
 ```
 
 It needs **core**, not the platform: `render()` works with no backend at all.
@@ -267,6 +268,26 @@ res.text                                 // also: res.usage, res.model, res.prov
 Handle these errors gracefully: `provider_unconfigured` (deployment has no
 key for that provider), `model_not_allowed` (not in the app's allowlist),
 and `rate_limited` (err.retryAfter says how many seconds to wait).
+
+### Share stack: cubby.share (opt-in script)
+
+The standard row of compact icon buttons for anything with a shareable URL:
+share (native sheet, copy fallback), QR code dialog, copy link, plus edit
+and delete when the app passes handlers. Core only. NEVER hand-roll these
+buttons or vendor a QR library into an app; attach the widget:
+
+```js
+cubby.share(el, {
+  url: `${location.origin}/myapp/${slug}`,  // required, absolute
+  label: `/myapp/${slug}`,   // aria labels + QR heading (default: url)
+  title: rec.title,          // native share sheet title (default: label)
+  onEdit: () => { ... },     // passing a handler is what shows the button
+  onDelete: () => { ... },   // ditto; run your own confirm() inside
+})
+```
+
+Guests get three buttons, owners five - the app decides by passing (or not
+passing) the handlers; real authorization stays in the collection rules.
 
 ### Rooms: cubby.rooms
 

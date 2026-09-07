@@ -20,7 +20,7 @@ const name = args[0]
 // Which of these are actually offered comes from what is built on disk, not
 // from this list, so the flag can never advertise a bundle that does not exist
 // yet -- scaffolding a tag with no file behind it now fails the manifest build.
-const MODULE_ORDER = ['markdown', 'editor', 'nav', 'preview', 'graph']
+const MODULE_ORDER = ['markdown', 'editor', 'nav', 'preview', 'graph', 'share']
 const OPTIONAL_MODULES = MODULE_ORDER.filter((m) =>
   existsSync(path.join(root, 'pb_public/js', `${m}.js`))
 )

@@ -92,6 +92,7 @@ cubby ships as layers, so a page pays only for what it uses:
 | `/js/core.js` | 1.5KB | the `cubby` namespace, `CubbyError`, escaping, the widget lifecycle, design tokens. No PocketBase. |
 | `/js/platform.js` | 14.2KB | PocketBase: `config`, `identity`, `db`, `fs`, `ai`, `rooms`. |
 | `/js/markdown.js` | 6.0KB | `cubby.markdown.render()`. |
+| `/js/share.js` | 9.5KB | `cubby.share()` icon stack: share / QR / copy link (+ edit / delete). Mostly the vendored QR generator. |
 | `/js/foundation.js` | 15.4KB | **deprecated** all-in-one (core + platform). Still built; do not use it in new apps. |
 
 Core comes first and the backend is optional, not the other way round —
@@ -494,6 +495,35 @@ Frames are `sandbox=""` by default, and `allow-same-origin` is never paired
 with `allow-scripts` — together they let a same-origin framed document remove
 its own sandbox. There is deliberately **no `error` listener** on the iframe;
 the only failure path is a timeout that recolours the loading overlay.
+
+## Share: cubby.share (opt-in)
+
+A row of compact icon buttons for one shareable URL — share (native sheet,
+copy fallback), QR code in a dialog, copy link, and, when the app passes the
+handlers, edit and delete. Extracted from the go app so every app with
+shareable records renders the same stack. Core only — no backend.
+
+```html
+<script src="/js/core.js" defer></script>
+<script src="/js/share.js" defer></script>
+```
+
+```js
+cubby.share('#actions', {
+  url: `${location.origin}/hang/${slug}`, // required, absolute
+  label: `/hang/${slug}`,   // aria labels + QR heading (default: url)
+  title: event.title,       // native share sheet title (default: label)
+  onEdit: () => { ... },    // passing a handler is what shows the button
+  onDelete: () => { ... },  // ditto; any confirm() is the app's business
+})
+```
+
+Guests see three buttons, owners five: the widget never decides who is an
+owner — the app expresses it by passing (or not passing) the handlers, and
+real authorization stays in the collection rules. The handle is a standard
+widget (`destroy()` removes the stack, its listeners, and any open QR
+dialog). The QR generator (Kazuhiko Arase, MIT) is vendored inside the
+bundle; nothing is fetched.
 
 ## Nav: cubby.nav (opt-in)
 
