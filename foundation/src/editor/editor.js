@@ -5,8 +5,10 @@ import { injectEditorStyles } from './styles.js'
  * Markdown editor factory: a plain textarea plus a live preview, in one of
  * two layouts. 'tabs' (default) is GitHub-style Write | Preview; 'split'
  * shows the preview beside the textarea, re-rendering as you type
- * (stacked on narrow screens). Paste/drop image upload is wired in unless
- * opts.upload is false, or unless there is no platform to upload to.
+ * (stacked on narrow screens). Paste/drop/attach file upload is wired in
+ * unless opts.upload is false, or unless there is no platform to upload to:
+ * images become image markdown, any other file becomes a plain link, and the
+ * whole editor is the drop target.
  *
  * A plain <textarea>, deliberately: no CodeMirror, no contenteditable. The
  * thing being edited is markdown and the thing that has to be right is the
@@ -21,8 +23,8 @@ import { injectEditorStyles } from './styles.js'
  * stored.
  */
 
-/** @param {object} cubby @param {Function} attachImageUpload */
-export function createEditor(cubby, attachImageUpload) {
+/** @param {object} cubby @param {Function} attachFileUpload */
+export function createEditor(cubby, attachFileUpload) {
   /**
    * @param {HTMLElement} container emptied and filled with the editor
    * @param {{
@@ -34,8 +36,8 @@ export function createEditor(cubby, attachImageUpload) {
    *   linkTarget?: string,
    *   upload?: false | {pathPrefix?: string, maxBytes?: number},
    *   onChange?: (value: string) => void,
-   *   onUploadStart?: (info: {name: string, path: string}) => void,
-   *   onUpload?: (info: {name: string, path: string, url: string}) => void,
+   *   onUploadStart?: (info: {name: string, path: string, kind: 'image' | 'file'}) => void,
+   *   onUpload?: (info: {name: string, path: string, url: string, kind: 'image' | 'file'}) => void,
    *   onError?: (err: CubbyError) => void,
    * }} [opts]
    * @returns {{value: string, textarea: HTMLTextAreaElement, focus: () => void, refresh: () => void, destroy: () => void}}
@@ -118,32 +120,59 @@ export function createEditor(cubby, attachImageUpload) {
     let timer = null
     ctx.on(textarea, 'input', () => {
       onChange(textarea.value)
-      if (mode === 'split') {
+      // A visible preview must track edits -- including the synthetic input
+      // an async upload swap dispatches while the Preview tab is showing.
+      if (mode === 'split' || (mode === 'tabs' && !previewEl.hidden)) {
         clearTimeout(timer)
         timer = setTimeout(renderPreview, debounceMs)
       }
     })
     ctx.own(() => clearTimeout(timer))
 
-    // Every image this editor has successfully uploaded, in order.
+    // Every image this editor has successfully uploaded, in order -- and
+    // every upload of any kind, in files.
     const images = []
+    const files = []
 
     // Upload needs a platform to upload to. With none, this is simply a plain
     // composer -- silently. The platform's absence is a supported
     // configuration (a static page with no backend), never a failure to
     // report, so nothing is logged and no affordance is shown.
     if (opts.upload !== false && cubby.hasPlatform?.()) {
-      ctx.own(
-        attachImageUpload(textarea, {
-          ...(opts.upload || {}),
-          onUploadStart: opts.onUploadStart,
-          onUpload: (info) => {
-            images.push(info)
-            opts.onUpload?.(info)
-          },
-          onError: opts.onError,
-        })
-      )
+      const detach = attachFileUpload(textarea, {
+        ...(opts.upload || {}),
+        // The whole editor -- tabs, preview, footer -- takes drops, so a
+        // file dragged anywhere onto it lands at the last caret position.
+        dropTarget: root,
+        dragClass: 'cubby-md-dragover',
+        onUploadStart: opts.onUploadStart,
+        onUpload: (info) => {
+          files.push(info)
+          if (info.kind === 'image') images.push(info)
+          opts.onUpload?.(info)
+        },
+        onError: opts.onError,
+      })
+      ctx.own(detach)
+
+      const footer = document.createElement('div')
+      footer.className = 'cubby-md-footer'
+      const picker = document.createElement('input')
+      picker.type = 'file'
+      picker.multiple = true
+      picker.hidden = true
+      const attach = document.createElement('button')
+      attach.type = 'button'
+      attach.className = 'cubby-md-attach'
+      attach.textContent = 'Attach files'
+      ctx.on(attach, 'click', () => picker.click())
+      ctx.on(picker, 'change', () => {
+        for (const file of Array.from(picker.files || [])) detach.upload(file)
+        // Reset so choosing the same file again still fires change.
+        picker.value = ''
+      })
+      footer.append(attach, picker)
+      root.appendChild(footer)
     }
 
     container.replaceChildren(root)
@@ -165,8 +194,10 @@ export function createEditor(cubby, attachImageUpload) {
       textarea,
       /** The preview element, so a caller can style or measure it. */
       preview: previewEl,
-      /** Images uploaded through this editor: [{ name, path, url }]. */
+      /** Images uploaded through this editor: [{ name, path, url, kind }]. */
       images,
+      /** Every upload through this editor, images included: [{ name, path, url, kind }]. */
+      files,
       focus() {
         textarea.focus()
       },

@@ -1,9 +1,9 @@
-import { createAttachImageUpload } from './upload.js'
+import { createAttachFileUpload } from './upload.js'
 import { createEditor as buildEditor } from './editor.js'
 
 /**
  * Opt-in editor module: a markdown textarea with live preview and
- * paste/drop image upload. Loaded per-app via
+ * paste/drop/attach file upload. Loaded per-app via
  * <script src="/js/editor.js" defer></script> after core.js and markdown.js,
  * which attaches it as cubby.editor.
  *
@@ -18,11 +18,14 @@ import { createEditor as buildEditor } from './editor.js'
  * @returns {Function} editor(target, options) -> handle
  */
 export function createEditor(cubby) {
-  const attachImageUpload = createAttachImageUpload(cubby)
-  const editor = buildEditor(cubby, attachImageUpload)
+  const attachFileUpload = createAttachFileUpload(cubby)
+  const editor = buildEditor(cubby, attachFileUpload)
   // The low-level helper hangs off the mount function, so cubby.editor is one
-  // name carrying both. cubby.markdown.attachImageUpload forwards here.
-  editor.attachImageUpload = attachImageUpload
+  // name carrying both. attachImageUpload is the pre-file-upload name, kept
+  // as an alias for consumers (and cubby.markdown's forwarder) that predate
+  // it -- same function, which now also takes non-image files.
+  editor.attachFileUpload = attachFileUpload
+  editor.attachImageUpload = attachFileUpload
   return editor
 }
 

@@ -235,8 +235,8 @@ cubby.markdown.injectStyles()        // idempotent; the editor calls it itself
 
 ## Editor: cubby.editor (opt-in)
 
-A markdown textarea with live preview and paste/drop image upload. Needs
-`core.js` and `markdown.js` before it; the platform is optional.
+A markdown textarea with live preview and paste/drop/attach file upload.
+Needs `core.js` and `markdown.js` before it; the platform is optional.
 
 ```html
 <script src="/js/core.js" defer></script>
@@ -248,12 +248,13 @@ A markdown textarea with live preview and paste/drop image upload. Needs
 const ed = cubby.editor(container, {          // container, or a selector string
   value: '',
   preview: true,                       // Write|Preview tabs; 'split' = live pane; false = none
-  upload: { pathPrefix: 'uploads/' },  // or false to disable paste/drop upload
-  onChange(value) {}, onUpload({ name, path, url }) {}, onError(err) {},
+  upload: { pathPrefix: 'uploads/' },  // or false to disable paste/drop/attach upload
+  onChange(value) {}, onUpload({ name, path, url, kind }) {}, onError(err) {},
 })
 ed.value          // live accessor
 ed.setValue(md)   // fires onChange and refreshes a visible preview
-ed.images         // [{ name, path, url }] uploaded through this editor
+ed.images         // [{ name, path, url, kind }] images uploaded through this editor
+ed.files          // every upload of any kind, images included
 ed.element        // the mounted root
 ed.preview        // the preview element
 ed.focus(); ed.refresh(); ed.destroy()
@@ -285,15 +286,35 @@ an app concatenates raw user data around it. Subset cuts, documented and
 deliberate: no raw HTML passthrough, no reference-style `[a][b]` links, no
 setext headings, no indented code blocks, single-line list items.
 
-**Paste-image upload** (GitHub PR editor behavior): pasting or dropping an
-image inserts `![Uploading name…](cubby-upload:<token>)` at the cursor,
-uploads to `uploads/<userId>/<token>.<ext>` via `cubby.fs.write`, then
-swaps the placeholder for `![name](url)` — the unique token keeps
-concurrent pastes distinguishable, and edits use `setRangeText` so the
-undo stack survives. Failures remove the placeholder and call `onError`;
-signed-out pastes error with `auth_required` and insert nothing. Image
-types: png/jpeg/gif/webp (SVG is excluded: PocketBase serves files with
-their declared content type, and SVG can script on the instance origin).
+**Paste/drop/attach file upload** (GitHub PR editor behavior): pasting or
+dropping a file inserts `![Uploading name…](cubby-upload:<token>)` at the
+cursor (`[Uploading name…]` without the bang for non-images), uploads to
+`uploads/<userId>/<token>.<ext>` via `cubby.fs.write`, then swaps the
+placeholder for `![name](url)` — a plain `[name](url)` link for
+non-images — with the unique token keeping concurrent pastes
+distinguishable, and edits using `setRangeText` so the undo stack
+survives. Failures remove the placeholder and call `onError`; signed-out
+pastes error with `auth_required` and insert nothing. Image types
+(png/jpeg/gif/webp) come from the MIME type; any other file's storage
+extension derives from its filename, falling back to `bin`. The
+inline-scriptable types — svg, html/htm/xhtml, xml — are refused on all
+paths, because PocketBase serves files with their declared content type
+and they can script on the instance origin: paste/drop skip them silently
+(so native text paste keeps working), while the picker reports
+`unsupported_type` through `onError`. The **whole editor** — tabs, preview
+pane, footer — is the drop target, highlighted with
+`.cubby-md-dragover` while a file drag is over it, and an **Attach
+files** button in a footer below the pane drives a hidden file input;
+either way the markup lands at the current (or most recent) caret
+position, even while the Preview tab is showing. The footer, like paste
+upload itself, only renders when a platform is present and `upload` is
+not `false`.
+
+The wiring is also available standalone as
+`cubby.editor.attachFileUpload(textarea, opts)` for a textarea outside the
+widget — it returns a detach function carrying `detach.upload(file)` for
+programmatic uploads. `cubby.editor.attachImageUpload` is the same
+function under its pre-file-upload name, kept as an alias.
 
 ## Graph: cubby.graph (opt-in)
 

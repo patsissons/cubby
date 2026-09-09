@@ -17,6 +17,10 @@ const STYLES = `
 .cubby-md-input { display: block; width: 100%; border: 0; outline: none; padding: 0.75rem; background: none; color: inherit; font: 0.9em/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; resize: vertical; min-height: 8rem; }
 .cubby-md-preview { padding: 0.75rem; }
 .cubby-md-empty { color: var(--muted, #6f6b66); }
+.cubby-md-footer { display: flex; align-items: center; padding: 0.3rem 0.5rem; border-top: 1px solid var(--border, #c8c2ba); }
+.cubby-md-attach { border: 0; background: none; color: var(--muted, #6f6b66); font: inherit; font-size: 0.85em; cursor: pointer; padding: 0.2rem 0.4rem; border-radius: 6px; }
+.cubby-md-attach:hover { color: inherit; }
+.cubby-md-editor.cubby-md-dragover { outline: 2px dashed var(--accent, #4a7dbd); outline-offset: -2px; }
 .cubby-md-split { display: grid; grid-template-columns: 1fr 1fr; }
 .cubby-md-split .cubby-md-preview { border-left: 1px solid var(--border, #c8c2ba); overflow-y: auto; }
 @media (max-width: 40rem) {

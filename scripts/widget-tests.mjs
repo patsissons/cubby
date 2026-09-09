@@ -134,6 +134,7 @@ await test('with no platform: preview works, upload unwired, nothing logged', ()
   // length, not deepEqual: arrays built inside the jsdom realm have a
   // different Array prototype and fail a strict structural compare.
   assert.equal(ed.images.length, 0)
+  assert.equal(p.document.querySelector('#host .cubby-md-attach'), null, 'no affordance without a backend')
   assert.deepEqual(p.errors, [])
 })
 
@@ -189,6 +190,165 @@ await test('a paste with no image is left entirely alone', () => {
 
   assert.equal(paste.defaultPrevented, false, 'getting this backwards breaks every normal paste')
   assert.equal(ed.value, '')
+})
+
+// --- non-image files: paste/drop/attach upload as plain links ----------------
+
+/** A fake platform whose fs.write records paths and echoes a URL back. */
+function uploadPage(uploaded) {
+  return page({
+    html: '<div id="host"></div>',
+    scripts: EDITOR_SCRIPTS,
+    platform: {
+      _pb: {},
+      identity: { user: { id: 'u1' } },
+      fs: {
+        async write(path) {
+          uploaded.push(path)
+          return { url: `/api/files/${path}` }
+        },
+      },
+    },
+  })
+}
+
+await test('a non-image paste uploads and swaps to a plain link', async () => {
+  const uploaded = []
+  const p = uploadPage(uploaded)
+  const ed = p.cubby.editor('#host', { value: '', upload: { pathPrefix: 'uploads/' } })
+  ed.textarea.setSelectionRange(0, 0)
+
+  const file = { name: 'report.pdf', size: 1024, type: 'application/pdf' }
+  const paste = new p.window.Event('paste', { bubbles: true, cancelable: true })
+  paste.clipboardData = { items: [{ kind: 'file', type: 'application/pdf', getAsFile: () => file }] }
+  ed.textarea.dispatchEvent(paste)
+
+  assert.equal(paste.defaultPrevented, true, 'a file paste is taken over too')
+  assert.match(ed.value, /^\[Uploading report\.pdf/, 'link placeholder, no image bang')
+
+  await new Promise((r) => setTimeout(r, 0))
+
+  assert.match(uploaded[0], /^uploads\/u1\/[a-z0-9]+\.pdf$/, 'extension comes from the filename')
+  assert.match(ed.value, /^\[report\.pdf\]\(\/api\/files\/uploads\/u1\/.*\.pdf\)/, 'a link, not image markdown')
+  assert.equal(ed.files.length, 1)
+  assert.equal(ed.files[0].kind, 'file')
+  assert.equal(ed.images.length, 0, 'images stays images-only')
+})
+
+await test('a file with no usable extension stores as .bin', async () => {
+  const uploaded = []
+  const p = uploadPage(uploaded)
+  const ed = p.cubby.editor('#host', { value: '', upload: { pathPrefix: 'uploads/' } })
+
+  const file = { name: 'noext', size: 10, type: 'application/octet-stream' }
+  const paste = new p.window.Event('paste', { bubbles: true, cancelable: true })
+  paste.clipboardData = { items: [{ kind: 'file', type: 'application/octet-stream', getAsFile: () => file }] }
+  ed.textarea.dispatchEvent(paste)
+  await new Promise((r) => setTimeout(r, 0))
+
+  assert.match(uploaded[0], /^uploads\/u1\/[a-z0-9]+\.bin$/)
+  assert.match(ed.value, /^\[noext\]\(/)
+})
+
+await test('inline-scriptable types are refused: paste/drop silently, picker loudly', async () => {
+  const uploaded = []
+  const errors = []
+  const p = uploadPage(uploaded)
+  const ed = p.cubby.editor('#host', {
+    value: '',
+    upload: { pathPrefix: 'uploads/' },
+    onError: (err) => errors.push(err.code),
+  })
+
+  const svg = { name: 'x.svg', size: 10, type: 'image/svg+xml' }
+  const paste = new p.window.Event('paste', { bubbles: true, cancelable: true })
+  paste.clipboardData = { items: [{ kind: 'file', type: 'image/svg+xml', getAsFile: () => svg }] }
+  ed.textarea.dispatchEvent(paste)
+  assert.equal(paste.defaultPrevented, false, 'a denied paste stays native')
+
+  const root = p.document.querySelector('#host .cubby-md-editor')
+  const drop = new p.window.Event('drop', { bubbles: true, cancelable: true })
+  drop.dataTransfer = { files: [{ name: 'page.html', size: 10, type: 'text/html' }], types: ['Files'] }
+  root.dispatchEvent(drop)
+  assert.equal(drop.defaultPrevented, false, 'a denied drop stays native')
+
+  const picker = p.document.querySelector('#host .cubby-md-footer input[type="file"]')
+  Object.defineProperty(picker, 'files', { value: [svg], configurable: true })
+  picker.dispatchEvent(new p.window.Event('change', { bubbles: true }))
+  await new Promise((r) => setTimeout(r, 0))
+
+  assert.equal(uploaded.length, 0, 'nothing scriptable ever reaches fs.write')
+  assert.equal(ed.value, '')
+  same(errors, ['unsupported_type'], 'an explicit picker choice deserves an explicit answer')
+})
+
+await test('the Attach files button uploads through the hidden picker', async () => {
+  const uploaded = []
+  const p = uploadPage(uploaded)
+  const ed = p.cubby.editor('#host', { value: '', upload: { pathPrefix: 'uploads/' } })
+
+  const button = p.document.querySelector('#host .cubby-md-attach')
+  assert.ok(button, 'the affordance renders below the pane when upload is wired')
+  const picker = p.document.querySelector('#host .cubby-md-footer input[type="file"]')
+  assert.ok(picker.hidden, 'the real input stays hidden behind the button')
+
+  const file = { name: 'notes.txt', size: 64, type: 'text/plain' }
+  Object.defineProperty(picker, 'files', { value: [file], configurable: true })
+  picker.dispatchEvent(new p.window.Event('change', { bubbles: true }))
+  await new Promise((r) => setTimeout(r, 0))
+
+  assert.match(ed.value, /^\[notes\.txt\]\(\/api\/files\/uploads\/u1\/.*\.txt\)/)
+  assert.equal(ed.files.length, 1)
+  assert.equal(picker.value, '', 'reset so the same file can be chosen again')
+})
+
+await test('a drop anywhere on the editor lands at the caret, and a visible preview refreshes', async () => {
+  const uploaded = []
+  const p = uploadPage(uploaded)
+  const ed = p.cubby.editor('#host', { value: 'before after', preview: true, previewDebounceMs: 0, upload: {} })
+  ed.textarea.setSelectionRange(7, 7)
+
+  const [, previewTab] = p.document.querySelectorAll('#host .cubby-md-tab')
+  previewTab.dispatchEvent(new p.window.Event('click', { bubbles: true }))
+  assert.equal(ed.preview.hidden, false)
+
+  const drop = new p.window.Event('drop', { bubbles: true, cancelable: true })
+  drop.dataTransfer = { files: [{ name: 'shot.png', size: 10, type: 'image/png' }], types: ['Files'] }
+  ed.preview.dispatchEvent(drop)
+
+  assert.equal(drop.defaultPrevented, true, 'the preview pane is part of the drop target')
+  await new Promise((r) => setTimeout(r, 0))
+  await new Promise((r) => setTimeout(r, 0))
+
+  assert.match(ed.value, /^before !\[shot\.png\]\(.*\)after$/, 'markup went in at the last caret position')
+  assert.match(ed.preview.innerHTML, /<img /, 'the visible preview caught the async swap')
+})
+
+await test('the drag highlight tracks file drags only, without strobing over children', () => {
+  const uploaded = []
+  const p = uploadPage(uploaded)
+  p.cubby.editor('#host', { value: '', upload: {} })
+  const root = p.document.querySelector('#host .cubby-md-editor')
+  const enter = (types) => {
+    const e = new p.window.Event('dragenter', { bubbles: true })
+    e.dataTransfer = { types }
+    root.dispatchEvent(e)
+  }
+  const leave = (types) => {
+    const e = new p.window.Event('dragleave', { bubbles: true })
+    e.dataTransfer = { types }
+    root.dispatchEvent(e)
+  }
+
+  enter(['text/plain'])
+  assert.ok(!root.classList.contains('cubby-md-dragover'), 'text drags get no highlight')
+
+  enter(['Files'])
+  enter(['Files']) // crossing into a child fires a second enter
+  leave(['Files'])
+  assert.ok(root.classList.contains('cubby-md-dragover'), 'still over the editor, still highlighted')
+  leave(['Files'])
+  assert.ok(!root.classList.contains('cubby-md-dragover'), 'gone once the drag truly leaves')
 })
 
 // --- nav ---------------------------------------------------------------------

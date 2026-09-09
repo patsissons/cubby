@@ -136,7 +136,7 @@
               <tr><td><code>core.js</code></td><td>1.6KB</td><td>—</td><td>namespace, <code>CubbyError</code>, escaping, widget lifecycle, design tokens</td></tr>
               <tr><td><code>platform.js</code></td><td>14.3KB</td><td>core</td><td>PocketBase: db, fs, ai, rooms, identity</td></tr>
               <tr><td><code>markdown.js</code></td><td>4.3KB</td><td>core</td><td><a href="#markdown">safe rendering</a></td></tr>
-              <tr><td><code>editor.js</code></td><td>2.6KB</td><td>markdown</td><td>textarea, live preview, paste-image upload</td></tr>
+              <tr><td><code>editor.js</code></td><td>3.2KB</td><td>markdown</td><td>textarea, live preview, paste/drop/attach file upload</td></tr>
               <tr><td><code>nav.js</code></td><td>2.3KB</td><td>core</td><td>the sticky bar at the top of this page</td></tr>
               <tr><td><code>preview.js</code></td><td>2.8KB</td><td>core</td><td>hover a link, see the page</td></tr>
               <tr><td><code>draw.js</code></td><td>4.4KB</td><td>core</td><td>hold Alt and scribble; shared when signed in</td></tr>
@@ -243,7 +243,7 @@ await cubby.fs.read('data.json', { app: 'otherapp' }) // cross-app read</code></
         <section aria-labelledby="markdown" data-nav-label="markdown">
           <h3 id="markdown">cubby.markdown</h3>
           <p>
-            Markdown rendering and an editor with live preview and paste-image upload. Opt-in:
+            Markdown rendering and an editor with live preview and paste/drop file upload. Opt-in:
             one extra script tag after <code>core.js</code> (both <code>defer</code>, so order
             is guaranteed) — apps that skip it pay zero bytes. It needs core, not the
             platform: <code>render()</code> works with no backend at all.
@@ -255,8 +255,8 @@ await cubby.fs.read('data.json', { app: 'otherapp' }) // cross-app read</code></
 const ed = cubby.editor(container, {
   value: '',
   preview: true,                       // Write|Preview tabs; 'split' = live pane
-  upload: { pathPrefix: 'uploads/' },  // paste/drop images upload via cubby.fs
-  onUpload({ name, path, url }) {},
+  upload: { pathPrefix: 'uploads/' },  // pasted/dropped/attached files upload via cubby.fs
+  onUpload({ name, path, url, kind }) {},
   onError(err) {},                     // auth_required when signed out
 })
 ed.value                               // get/set the markdown</code></pre>
@@ -266,8 +266,10 @@ ed.value                               // get/set the markdown</code></pre>
             character at emission and vets URL schemes — raw HTML renders as visible text, so
             the returned string is safe to assign to <code>innerHTML</code>. Pasting an image
             inserts an <code>![Uploading…]</code> placeholder that swaps to the real file URL
-            when the upload lands, exactly like the GitHub PR editor. Uploads need a signed-in
-            user and accept png/jpeg/gif/webp. See the markdown section of
+            when the upload lands, exactly like the GitHub PR editor; any other file becomes a
+            plain <code>[name](url)</code> link. Uploads need a signed-in user; png/jpeg/gif/webp
+            become images, and inline-scriptable types (svg, html, xml) are refused. See the
+            markdown section of
             <a href="/hello/">the hello app</a> for it running live.
           </p>
         </section>
@@ -275,7 +277,8 @@ ed.value                               // get/set the markdown</code></pre>
         <section aria-labelledby="editor" data-nav-label="editor">
           <h3 id="editor">cubby.editor</h3>
           <p>
-            A markdown textarea with a live preview and paste-image upload. Needs
+            A markdown textarea with a live preview and file upload by paste, drag-drop onto any
+            part of the editor, or an Attach files button below the pane. Needs
             <code>markdown.js</code> before it; the platform is optional, and without one this is
             a plain composer with a working preview and upload silently off.
           </p>
@@ -286,11 +289,12 @@ ed.value                               // get/set the markdown</code></pre>
   value: '',
   preview: true,                       // Write|Preview tabs; 'split' = live pane; false = none
   upload: { pathPrefix: 'uploads/' },  // or false
-  onChange(value) {}, onUpload({ name, path, url }) {}, onError(err) {},
+  onChange(value) {}, onUpload({ name, path, url, kind }) {}, onError(err) {},
 })
 ed.value          // live accessor
 ed.setValue(md)
-ed.images         // [{ name, path, url }] uploaded through this editor
+ed.images         // [{ name, path, url, kind }] images uploaded through this editor
+ed.files          // every upload of any kind, images included
 ed.element; ed.preview; ed.textarea
 ed.focus(); ed.refresh(); ed.destroy()</code></pre>
           <p>
@@ -302,8 +306,11 @@ ed.focus(); ed.refresh(); ed.destroy()</code></pre>
           <p>
             A pasted image goes in as an <code>![Uploading…]()</code> placeholder at the caret and
             is swapped for the real link when the upload lands, so the note keeps its shape while
-            bytes are in flight. The stored path is built server-side from the user id and a
-            token, so two pastes of the same <code>image.png</code> cannot collide.
+            bytes are in flight; any other file gets the same treatment as a plain
+            <code>[name](url)</code> link (inline-scriptable types — svg, html, xml — are refused).
+            The stored path is built server-side from the user id and a token, so two pastes of
+            the same <code>image.png</code> cannot collide. Dropping works anywhere on the editor
+            — tabs, preview, footer — and lands at the most recent caret position.
           </p>
         </section>
 

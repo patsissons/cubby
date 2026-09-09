@@ -208,7 +208,7 @@ function wireMarkdown() {
     'Rendering is **escaped by construction** - try `<script>` in a heading.',
     '',
     '- [x] render markdown',
-    '- [ ] paste an image below (sign in first)',
+    '- [ ] paste, drop, or attach a file below (sign in first)',
     '',
     '| subsystem | global |',
     '| --- | --- |',
@@ -231,7 +231,7 @@ function wireMarkdown() {
       status.textContent = `uploaded to ${path}`
     },
     onError: (err) => {
-      status.textContent = err.code === 'auth_required' ? 'sign in to upload images' : err.message
+      status.textContent = err.code === 'auth_required' ? 'sign in to upload files' : err.message
     },
   })
 }
