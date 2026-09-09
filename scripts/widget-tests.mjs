@@ -351,6 +351,74 @@ await test('the drag highlight tracks file drags only, without strobing over chi
   assert.ok(!root.classList.contains('cubby-md-dragover'), 'gone once the drag truly leaves')
 })
 
+// --- pasting a URL over a selection links it ---------------------------------
+
+/** @returns {Event} a paste carrying plain text, no files */
+function textPaste(p, text) {
+  const paste = new p.window.Event('paste', { bubbles: true, cancelable: true })
+  paste.clipboardData = { items: [{ kind: 'string', type: 'text/plain' }], getData: () => text }
+  return paste
+}
+
+await test('pasting a URL over selected text wraps it as a markdown link', () => {
+  // No platform on purpose: linkifying is pure editing and needs no backend.
+  const p = page({ html: '<div id="host"></div>', scripts: EDITOR_SCRIPTS })
+  const changes = []
+  const ed = p.cubby.editor('#host', { value: 'see the docs here', onChange: (v) => changes.push(v) })
+  ed.textarea.setSelectionRange(8, 12) // "docs"
+
+  const paste = textPaste(p, 'https://example.com/docs')
+  ed.textarea.dispatchEvent(paste)
+
+  assert.equal(paste.defaultPrevented, true)
+  assert.equal(ed.value, 'see the [docs](https://example.com/docs) here')
+  assert.equal(changes.length, 1, 'the edit fires onChange like any other')
+})
+
+await test('a URL pasted with no selection stays a native paste', () => {
+  const p = page({ html: '<div id="host"></div>', scripts: EDITOR_SCRIPTS })
+  const ed = p.cubby.editor('#host', { value: 'note' })
+  ed.textarea.setSelectionRange(4, 4)
+
+  const paste = textPaste(p, 'https://example.com/')
+  ed.textarea.dispatchEvent(paste)
+
+  assert.equal(paste.defaultPrevented, false, 'the browser inserts the URL as plain text')
+  assert.equal(ed.value, 'note', 'jsdom does no native paste; untouched proves we stood aside')
+})
+
+await test('non-URL text pasted over a selection stays a native paste', () => {
+  const p = page({ html: '<div id="host"></div>', scripts: EDITOR_SCRIPTS })
+  const ed = p.cubby.editor('#host', { value: 'see the docs here' })
+  ed.textarea.setSelectionRange(8, 12)
+
+  for (const text of ['plain words', 'https://a b', 'ftp://example.com/x']) {
+    const paste = textPaste(p, text)
+    ed.textarea.dispatchEvent(paste)
+    assert.equal(paste.defaultPrevented, false, `"${text}" must replace the selection natively`)
+  }
+  assert.equal(ed.value, 'see the docs here')
+})
+
+await test('a paste carrying a file goes to the uploader even with a selection', async () => {
+  const uploaded = []
+  const p = uploadPage(uploaded)
+  const ed = p.cubby.editor('#host', { value: 'label', upload: { pathPrefix: 'uploads/' } })
+  ed.textarea.setSelectionRange(0, 5)
+
+  const file = { name: 'shot.png', size: 10, type: 'image/png' }
+  const paste = new p.window.Event('paste', { bubbles: true, cancelable: true })
+  paste.clipboardData = {
+    items: [{ kind: 'file', type: 'image/png', getAsFile: () => file }],
+    getData: () => 'https://example.com/',
+  }
+  ed.textarea.dispatchEvent(paste)
+  await new Promise((r) => setTimeout(r, 0))
+
+  assert.equal(uploaded.length, 1, 'the file uploaded')
+  assert.ok(!ed.value.includes('[label]'), 'the linkifier stood aside')
+})
+
 // --- nav ---------------------------------------------------------------------
 
 const NAV_SCRIPTS = ['core.js', 'nav.js']

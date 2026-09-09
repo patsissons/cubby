@@ -310,6 +310,12 @@ position, even while the Preview tab is showing. The footer, like paste
 upload itself, only renders when a platform is present and `upload` is
 not `false`.
 
+**Paste-a-URL linkification** (also GitHub editor behavior): with text
+selected, pasting a lone http(s) URL wraps the selection as
+`[selection](url)`; with no selection the paste stays native and the URL
+goes in as plain text. Pure editing, so it works with no platform and
+takes precedence-order care to stand aside for file pastes.
+
 The wiring is also available standalone as
 `cubby.editor.attachFileUpload(textarea, opts)` for a textarea outside the
 widget — it returns a detach function carrying `detach.upload(file)` for

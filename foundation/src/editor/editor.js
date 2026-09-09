@@ -1,4 +1,5 @@
 import { CubbyError, widget } from '#core'
+import { attachLinkPaste } from './linkPaste.js'
 import { injectEditorStyles } from './styles.js'
 
 /**
@@ -174,6 +175,10 @@ export function createEditor(cubby, attachFileUpload) {
       footer.append(attach, picker)
       root.appendChild(footer)
     }
+
+    // Registered after the upload wiring on purpose: a paste carrying a file
+    // must reach the uploader, not the linkifier.
+    ctx.own(attachLinkPaste(textarea))
 
     container.replaceChildren(root)
     ctx.own(() => root.remove())

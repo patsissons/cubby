@@ -310,7 +310,9 @@ ed.focus(); ed.refresh(); ed.destroy()</code></pre>
             <code>[name](url)</code> link (inline-scriptable types — svg, html, xml — are refused).
             The stored path is built server-side from the user id and a token, so two pastes of
             the same <code>image.png</code> cannot collide. Dropping works anywhere on the editor
-            — tabs, preview, footer — and lands at the most recent caret position.
+            — tabs, preview, footer — and lands at the most recent caret position. And pasting a
+            URL over selected text wraps the selection as a <code>[selection](url)</code> link;
+            with nothing selected the URL pastes as plain text.
           </p>
         </section>
 
