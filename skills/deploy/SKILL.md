@@ -64,7 +64,9 @@ PocketHost dashboard > your instance > Secrets tab. Add `OPENROUTER_API_KEY`
 (secrets are injected at process start). Without the key the proxy returns a
 clean `provider_unconfigured` error to apps. Check current model ids in
 `cubby.config.json` against `https://openrouter.ai/api/v1/models`
-occasionally; they age.
+occasionally; they age. App hooks that need their own secrets go in the same
+Secrets tab, named with the app's slug as prefix (`HELLO_*` for the `hello`
+app, `MY_APP_*` for `my-app`), and need the same power cycle.
 
 ## 4. OAuth providers
 

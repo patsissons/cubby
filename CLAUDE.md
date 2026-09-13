@@ -12,7 +12,8 @@ skips platform.js entirely. /js/foundation.js is the deprecated all-in-one and
 must keep building. The forkability rule governs every
 change: all deployment-specific state lives in cubby.config.json and app
 directories (plus their app migrations and pb_hooks/apps/<name>/ hooks,
-loaded at boot by the platform shim pb_hooks/apps.pb.js); platform files are
+loaded at boot by the platform shim pb_hooks/apps.pb.js; env vars used only
+by one app are prefixed with its slug, HELLO_* for hello); platform files are
 never edited in deployment repos, so upstream merges stay clean.
 
 To build a new app here, follow skills/new-app/SKILL.md (also exposed

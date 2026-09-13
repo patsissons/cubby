@@ -552,8 +552,10 @@ npm run dev         # local PocketBase + watch build at localhost:8090</code></p
             <li>
               <strong>Do not touch the platform.</strong> The foundation, platform hooks,
               platform migrations, and other apps stay as upstream ships them; an app's own
-              server hooks live in its <code>pb_hooks/apps/&lt;app&gt;/</code> directory. That is
-              what keeps platform updates a clean merge.
+              server hooks live in its <code>pb_hooks/apps/&lt;app&gt;/</code> directory, and any
+              env var only that app reads is prefixed with its slug
+              (<code>HELLO_*</code> for <code>hello</code>). That is what keeps platform updates
+              a clean merge.
             </li>
           </ul>
         </section>

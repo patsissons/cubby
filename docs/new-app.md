@@ -48,8 +48,9 @@ An app that needs server-side behavior (secret API keys, server-only writes)
 ships hooks at `pb_hooks/apps/my-app/*.pb.js`; the platform shim
 (`pb_hooks/apps.pb.js`) loads them at boot, since PocketBase does not
 auto-load nested hook files. Namespace routes as `/_cubby/apps/my-app/...`,
-read secrets from instance env vars with `$os.getenv`, and remember the JSVM
-is synchronous (`$http.send`, no fetch/Promises). Hooks bypass collection
+read secrets from instance env vars with `$os.getenv` (named with the app's
+slug as prefix, `MY_APP_*` for `my-app`), and remember the JSVM is
+synchronous (`$http.send`, no fetch/Promises). Hooks bypass collection
 rules, so a hook-written collection can set its client write rules to `null`.
 See the worked example in `skills/new-app/SKILL.md` ("App hooks").
 

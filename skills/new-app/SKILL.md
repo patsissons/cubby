@@ -342,6 +342,10 @@ files itself. Rules:
 - Secrets come from instance env vars via `$os.getenv` (PocketHost Secrets
   tab in production, exported before `npm run dev` locally). Never put a
   secret in the app directory: everything under `pb_public/` is served.
+- Env vars used only by this app are prefixed with the app's slug in upper
+  snake case, hyphens as underscores: app `my-app` reads `MY_APP_API_KEY`,
+  app `hello` would read `HELLO_TEST_VALUE`. Unprefixed names are reserved
+  for platform vars (`OPENROUTER_API_KEY`, `PHIO_*`, `PB_*`).
 - Hooks bypass collection rules, so a collection written only by a hook can
   set `createRule`/`updateRule`/`deleteRule` to `null` for real server-only
   write enforcement.
@@ -369,6 +373,8 @@ routerAdd('GET', '/_cubby/apps/my-app/lookup', (e) => {
   return e.json(200, res.json)
 })
 ```
+
+Note the env var name: `my-app` owns it, so it is `MY_APP_API_KEY`.
 
 ## What NOT to touch
 

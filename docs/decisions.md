@@ -64,6 +64,16 @@ App directory names allow hyphens (`my-app`) but PocketBase collection names
 do not. `cubby.db.collection('items')` in app `my-app` resolves to
 `my_app_items`. Migrations for hyphenated apps must use the underscore form.
 
+## App env vars are prefixed with the app slug
+
+Every app's hooks share one process environment and one flat PocketHost
+Secrets tab, so a generic name like `API_KEY` says nothing about its owner and
+collides the moment a second app wants one. An env var used only by one app is
+prefixed with that app's slug in upper snake case, hyphens as underscores, the
+same transform collections use: app `hello` reads `HELLO_TEST_VALUE`, app
+`my-app` reads `MY_APP_API_KEY`. Unprefixed names (`OPENROUTER_API_KEY`,
+`PHIO_*`, `PB_*`) are reserved for the platform. Convention, not enforcement.
+
 ## .phioconfig is gitignored in the template
 
 All deployment-specific state lives in cubby.config.json and app directories
@@ -395,8 +405,9 @@ is app-owned, ships in the app's PR, and merges cleanly downstream exactly
 like `pb_public/<slug>/` and the app's migrations. Loading is wrapped in a
 per-app catch so one app's broken hook logs and moves on instead of taking
 the instance down. Routes are namespaced `/_cubby/apps/<slug>/...`, secrets
-come from instance env vars (`$os.getenv`; nothing under `pb_public/` can
-hold one, it is all served), and because hooks bypass collection API rules, a
+come from instance env vars (`$os.getenv`, named with the app slug as prefix
+per the entry above; nothing under `pb_public/` can hold one, it is all
+served), and because hooks bypass collection API rules, a
 hook-written collection can set its client write rules to `null` for real
 server-only write enforcement. Manifest-driven platform hooks remain the
 preferred shape when a need generalizes; `pb_hooks/apps/` is for the code
