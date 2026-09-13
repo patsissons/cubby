@@ -669,17 +669,19 @@ const res = await cubby.ai.chat({
     { role: 'system', content: 'you are an assistant' },
     { role: 'user', content: 'add 2 + 2' },
   ],
-  model: 'claude-haiku',              // registry alias; omit for the default
+  model: 'claude-fable',              // registry alias; omit for the default
   options: { maxTokens: 500, temperature: 0.3 },
 })
 console.log(res.text, res.usage, res.model, res.provider)
 ```
 
 Models are aliases in `cubby.config.json` `ai.models`; unknown aliases throw
-`model_unknown` before any request. The hook resolves the alias, calls the
-provider (Anthropic messages, OpenAI responses, Gemini generateContent) with
-a 60s timeout, and normalizes to `{ text, usage: { input, output }, model,
-provider }`. A missing key returns `provider_unconfigured` naming the env var.
+`model_unknown` before any request. Every alias routes through OpenRouter's
+chat completions endpoint (the registry entry's `id` is the OpenRouter model
+id, e.g. `deepseek/deepseek-v4.1-flash`), so one key reaches every vendor.
+The hook resolves the alias, calls OpenRouter with a 60s timeout, and
+normalizes to `{ text, usage: { input, output }, model, provider }`. A missing
+key returns `provider_unconfigured` naming the env var.
 
 ### Cost controls (per-app policy)
 
@@ -688,7 +690,7 @@ server-side from the app's committed `cubby.json`:
 
 ```json
 "ai": {
-  "models": ["gemini-flash"],       // allowlist of registry aliases; DEFAULT []
+  "models": ["deepseek-flash"],     // allowlist of registry aliases; DEFAULT []
   "allowAnonymous": false,          // default false: signed-in users only
   "rateLimitSeconds": 60,           // min seconds between prompts per caller; 0 disables
   "allowedUsers": ["*@corp.com"],   // email globs; default []: any signed-in user
@@ -719,8 +721,8 @@ caps return `content_too_long` (413). Checks run before the rate stamp; the
 app name in the request is the caller's claim, so a forged claim can only
 ever reach policy combinations some committed manifest already allows.
 
-Keys: set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` in the
-PocketHost dashboard (instance > Secrets), then power the instance off and on.
+Keys: set `OPENROUTER_API_KEY` in the PocketHost dashboard (instance >
+Secrets), then power the instance off and on.
 
 ## Rooms: cubby.rooms
 

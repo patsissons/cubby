@@ -239,7 +239,7 @@ AI costs real money, so apps declare their policy in cubby.json; without an
 `ai` block every model is rejected with `model_not_allowed`:
 
 ```json
-"ai": { "models": ["gemini-flash"] }
+"ai": { "models": ["deepseek-flash"] }
 ```
 
 Optional keys: `"allowAnonymous": true` (default false: signed-in users
@@ -259,7 +259,7 @@ const res = await cubby.ai.chat({
     { role: 'system', content: 'answer briefly' },
     { role: 'user', content: 'hi' },
   ],
-  model: 'gemini-flash',                 // optional alias from cubby.config.ai.models
+  model: 'deepseek-flash',               // optional alias from cubby.config.ai.models
   options: { maxTokens: 500 },
 })
 res.text                                 // also: res.usage, res.model, res.provider

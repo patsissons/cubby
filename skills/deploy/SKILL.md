@@ -57,13 +57,14 @@ starts deploying on every push to main, power cycling the instance afterwards
 (with a health-check loop) so new hooks and migrations are live without a
 manual restart. Without those secrets it only verifies the build.
 
-## 3. AI provider keys
+## 3. AI provider key
 
-PocketHost dashboard > your instance > Secrets tab. Add any of
-`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, then power-cycle
-the instance (secrets are injected at process start). Missing providers
-return a clean `provider_unconfigured` error to apps. Check current model
-ids in `cubby.config.json` against provider docs occasionally; they age.
+PocketHost dashboard > your instance > Secrets tab. Add `OPENROUTER_API_KEY`
+(every model alias routes through OpenRouter), then power-cycle the instance
+(secrets are injected at process start). Without the key the proxy returns a
+clean `provider_unconfigured` error to apps. Check current model ids in
+`cubby.config.json` against `https://openrouter.ai/api/v1/models`
+occasionally; they age.
 
 ## 4. OAuth providers
 
@@ -122,8 +123,8 @@ deploy.yml: idea on your phone to live app with no laptop involved.
   that is the endpoint that works; merely flipping the instance record's
   power field via the collections API does NOT stop a running container, and
   the documented pb_hooks auto-restart does not fire for SFTP-written files.
-- `provider_unconfigured`: the named env var is missing in instance Secrets
-  (or the instance was not restarted after adding it).
+- `provider_unconfigured`: `OPENROUTER_API_KEY` is missing in instance
+  Secrets (or the instance was not restarted after adding it).
 - OAuth popup errors: redirect URI mismatch; it must be exactly
   `https://<HOST>/api/oauth2-redirect` for the origin being used.
 - Deleted files still live after deploy: phio deploys are additive
