@@ -5,14 +5,14 @@
   "instanceUrl": "https://cubby.pockethost.io",
   "oauthProviders": ["google", "github"],
   "ai": {
-    "defaultModel": "gemini-flash",
+    "defaultModel": "deepseek-flash",
     "models": {
-      "gemini-flash": { "provider": "gemini", "id": "gemini-3.7-flash" },
-      "gemini-pro": { "provider": "gemini", "id": "gemini-2.5-pro" },
-      "claude-haiku": { "provider": "anthropic", "id": "claude-haiku-4-5" },
-      "claude-sonnet": { "provider": "anthropic", "id": "claude-sonnet-5" },
-      "gpt-mini": { "provider": "openai", "id": "gpt-5.6-luna" },
-      "gpt": { "provider": "openai", "id": "gpt-5.6-sol" }
+      "deepseek-flash": { "provider": "openrouter", "id": "deepseek/deepseek-v4.1-flash" },
+      "glm-flash": { "provider": "openrouter", "id": "z-ai/glm-5.3-flash" },
+      "gemini-flash": { "provider": "openrouter", "id": "google/gemini-3.8-flash" },
+      "gpt-astra": { "provider": "openrouter", "id": "openai/gpt-6-astra" },
+      "claude-fable": { "provider": "openrouter", "id": "anthropic/claude-fable-5.1" },
+      "claude-opus": { "provider": "openrouter", "id": "anthropic/claude-opus-5" }
     }
   },
   "preview": {
