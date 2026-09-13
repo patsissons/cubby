@@ -522,9 +522,9 @@ await test('ai: unknown model alias throws client-side', async () => {
 })
 
 await test('ai: models outside the app allowlist rejected', async () => {
-  // claude-haiku is in the registry but not in hello's allowlist.
+  // claude-opus is in the registry but not in hello's allowlist.
   await assert.rejects(
-    () => cubby.ai.chat({ messages: [{ role: 'user', content: 'hi' }], model: 'claude-haiku' }),
+    () => cubby.ai.chat({ messages: [{ role: 'user', content: 'hi' }], model: 'claude-opus' }),
     (e) => e.code === 'model_not_allowed' && e.status === 403
   )
 })
@@ -533,7 +533,7 @@ await test('ai: apps without an ai block are blocked entirely', async () => {
   const impersonatedDocs = await fetch(`${BASE}/_cubby/ai/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: impersonated.token },
-    body: JSON.stringify({ app: 'docs', model: 'gemini-flash', messages: [{ role: 'user', content: 'hi' }] }),
+    body: JSON.stringify({ app: 'docs', model: 'deepseek-flash', messages: [{ role: 'user', content: 'hi' }] }),
   })
   assert.equal(impersonatedDocs.status, 403)
   const body = await impersonatedDocs.json()
@@ -571,12 +571,12 @@ await test('ai: chat proxies or reports provider_unconfigured cleanly', async ()
   try {
     const res = await cubby.ai.chat({ messages: GREETING, options: { maxTokens: 200 } })
     assert.ok(res.text.length > 0, 'expected greeting text')
-    assert.equal(res.provider, 'gemini')
+    assert.equal(res.provider, 'openrouter')
     assert.ok(res.usage.output > 0)
     console.log(`     (live ${res.provider} reply: ${JSON.stringify(res.text.slice(0, 60))})`)
   } catch (err) {
     if (err.code === 'provider_unconfigured') {
-      console.log('     (no GEMINI_API_KEY in server env; clean 503 verified)')
+      console.log('     (no OPENROUTER_API_KEY in server env; clean 503 verified)')
       assert.equal(err.status, 503)
     } else {
       throw err
@@ -622,7 +622,7 @@ await test('ai: allowedUsers email globs gate access', async () => {
         JSON.stringify({
           name: '_smoke-acl',
           hidden: true,
-          ai: { models: ['gemini-flash'], rateLimitSeconds: 0, allowedUsers },
+          ai: { models: ['deepseek-flash'], rateLimitSeconds: 0, allowedUsers },
         })
       )
     const chat = (token) =>
@@ -654,7 +654,7 @@ await test('ai: allowedUsers email globs gate access', async () => {
         name: '_smoke-acl',
         hidden: true,
         ai: {
-          models: ['gemini-flash'],
+          models: ['deepseek-flash'],
           rateLimitSeconds: 0,
           messagePatterns: { user: ['^hi$', '^hello$'] },
         },

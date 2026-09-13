@@ -23,22 +23,26 @@ runs two ways, sharing one implementation (pb_hooks/lib/sweep.js):
 2. `GET /_cubby/cron/sweep`: idempotent, cheap, unauthenticated, so a
    PocketHost dashboard webhook (e.g. @minutely) can drive it.
 
-## Model registry IDs (verified 2026-08-16)
+## One provider: OpenRouter (model IDs verified 2026-09-13)
 
-Aliases map to the current GA model per provider tier:
+The proxy originally spoke three vendor APIs directly (Anthropic messages,
+OpenAI responses, Gemini generateContent), each with its own key, request
+builder, and parser. That was replaced by OpenRouter alone: one
+`OPENROUTER_API_KEY`, one OpenAI-compatible chat completions surface, and
+vendor choice moves entirely into the registry's model ids. The alias
+mechanics (default model, per-app allowlist) are unchanged. Streaming stays
+out (see below), so the endpoint is called with `stream: false`.
 
-- gemini-flash -> gemini-3.7-flash (newest GA flash)
-- gemini-pro -> gemini-2.5-pro (newest GA pro; gemini-3.1-pro is preview-only)
-- claude-haiku -> claude-haiku-4-5 (dateless Anthropic IDs are pinned snapshots)
-- claude-sonnet -> claude-sonnet-5
-- gpt-mini -> gpt-5.6-luna (OpenAI dropped the "-mini" naming; Luna is the
-  cost tier, Sol the flagship)
-- gpt -> gpt-5.6-sol
+Aliases keep the `<vendor>-<tier>` convention and map to OpenRouter ids:
 
-Provider surfaces: Anthropic /v1/messages; OpenAI /v1/responses (the current
-recommended API; chat completions compatibility with gpt-5.6 models was not
-verified); Gemini generateContent (labeled legacy in favor of the Interactions
-API but stable, simpler, and sufficient for non-streaming chat).
+- deepseek-flash -> deepseek/deepseek-v4.1-flash (default; cheapest)
+- glm-flash -> z-ai/glm-5.3-flash
+- gemini-flash -> google/gemini-3.8-flash
+- gpt-astra -> openai/gpt-6-astra
+- claude-fable -> anthropic/claude-fable-5.1
+- claude-opus -> anthropic/claude-opus-5
+
+Check ids against `https://openrouter.ai/api/v1/models` occasionally; they age.
 
 ## No streaming in v1
 

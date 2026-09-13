@@ -321,7 +321,7 @@ ed.focus(); ed.refresh(); ed.destroy()</code></pre>
           <p>
             Chat through a server-side proxy; provider API keys live in instance secrets and
             never reach the browser. Models are friendly aliases defined in
-            <code>cubby.config.json</code> (Anthropic, OpenAI, and Gemini supported), and
+            <code>cubby.config.json</code> (every alias routes through OpenRouter), and
             anonymous calls are rejected.
           </p>
           <pre><code>const res = await cubby.ai.chat({
@@ -329,7 +329,7 @@ ed.focus(); ed.refresh(); ed.destroy()</code></pre>
     { role: 'system', content: 'answer briefly' },
     { role: 'user', content: 'what rhymes with cubby?' },
   ],
-  model: 'claude-haiku',            // optional alias; omit for the default
+  model: 'claude-fable',            // optional alias; omit for the default
   options: { maxTokens: 500 },
 })
 
