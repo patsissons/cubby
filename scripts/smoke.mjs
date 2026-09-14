@@ -7,6 +7,12 @@
 //
 // Env: SMOKE_URL (default http://127.0.0.1:8090), SMOKE_SUPERUSER_EMAIL,
 // SMOKE_SUPERUSER_PASSWORD (default local dev superuser).
+//
+// The mcp: group needs the server to know the bearer tokens it will send:
+//   export CUBBY_MCP_TOKEN=smoke-mcp-token HELLO_MCP_TOKEN=smoke-hello-token
+// before `npm run dev` (or set SMOKE_MCP_TOKEN / SMOKE_HELLO_MCP_TOKEN to
+// match whatever the server has). Without them the group verifies the clean
+// 503 and skips, like the AI provider check.
 import assert from 'node:assert/strict'
 import { EventSource } from 'eventsource'
 
@@ -16,6 +22,8 @@ if (typeof globalThis.EventSource === 'undefined') globalThis.EventSource = Even
 const BASE = (process.env.SMOKE_URL || 'http://127.0.0.1:8090').replace(/\/+$/, '')
 const EMAIL = process.env.SMOKE_SUPERUSER_EMAIL || 'local@cubby.test'
 const PASSWORD = process.env.SMOKE_SUPERUSER_PASSWORD || 'cubby-local-dev'
+const MCP_TOKEN = process.env.SMOKE_MCP_TOKEN || 'smoke-mcp-token'
+const HELLO_MCP_TOKEN = process.env.SMOKE_HELLO_MCP_TOKEN || 'smoke-hello-token'
 
 // One core module, many platform instances -- exactly the browser's shape.
 //
@@ -674,6 +682,149 @@ await test('ai: allowedUsers email globs gate access', async () => {
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+// --- mcp: the agent-facing endpoints (raw fetch; no client library) ---
+
+/** POST a JSON-RPC body (object, array, or raw string) to an MCP endpoint. */
+async function mcp(path, body, token) {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+  })
+  const text = await res.text()
+  let json = null
+  try {
+    json = text ? JSON.parse(text) : null
+  } catch {
+    json = null
+  }
+  return { status: res.status, headers: res.headers, text, json }
+}
+const rpc = (id, method, params) => ({ jsonrpc: '2.0', id, method, ...(params ? { params } : {}) })
+const toolCall = (id, name, args) => rpc(id, 'tools/call', { name, arguments: args })
+const INIT = rpc(1, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'smoke', version: '0' } })
+
+let mcpConfigured = false
+await test('mcp: initialize answers or reports not_configured cleanly', async () => {
+  const res = await mcp('/_cubby/mcp', INIT, MCP_TOKEN)
+  if (res.status === 503) {
+    assert.equal(res.json.code, 'not_configured')
+    assert.ok(res.json.message.includes('CUBBY_MCP_TOKEN'))
+    console.log('     (no CUBBY_MCP_TOKEN in server env; clean 503 verified, rest of the group skipped)')
+    return
+  }
+  assert.equal(res.status, 200, res.text)
+  assert.equal(typeof res.json.result.protocolVersion, 'string')
+  assert.deepEqual(res.json.result.capabilities, { tools: {} })
+  assert.equal(res.json.result.serverInfo.name, 'cubby-mcp')
+  assert.equal(res.headers.get('cache-control'), 'no-store')
+  mcpConfigured = true
+})
+
+await test('mcp: GET is 405, no token is 401 without WWW-Authenticate', async () => {
+  const get = await fetch(`${BASE}/_cubby/mcp`)
+  assert.equal(get.status, 405)
+  assert.equal(get.headers.get('allow'), 'POST')
+  assert.equal((await get.json()).code, 'method_not_allowed')
+  const getApp = await fetch(`${BASE}/_cubby/mcp/hello`)
+  assert.equal(getApp.status, 405)
+  if (!mcpConfigured) return
+  const res = await mcp('/_cubby/mcp', INIT)
+  assert.equal(res.status, 401)
+  assert.equal(res.json.code, 'unauthorized')
+  assert.equal(res.headers.get('www-authenticate'), null, 'a 401 must not trigger OAuth discovery')
+  const wrong = await mcp('/_cubby/mcp', INIT, `${MCP_TOKEN}x`)
+  assert.equal(wrong.status, 401)
+})
+
+await test('mcp: notifications -> 202, ping, batch, unknown method, parse error', async () => {
+  if (!mcpConfigured) return
+  const note = await mcp('/_cubby/mcp', { jsonrpc: '2.0', method: 'notifications/initialized' }, MCP_TOKEN)
+  assert.equal(note.status, 202)
+  assert.equal(note.text, '')
+  const ping = await mcp('/_cubby/mcp', rpc(2, 'ping'), MCP_TOKEN)
+  assert.deepEqual(ping.json, { jsonrpc: '2.0', id: 2, result: {} })
+  const batch = await mcp('/_cubby/mcp', [rpc(3, 'ping'), rpc(4, 'ping')], MCP_TOKEN)
+  assert.equal(batch.status, 200)
+  assert.equal(batch.json.length, 2)
+  assert.deepEqual(batch.json.map((r) => r.id).sort(), [3, 4])
+  const unknown = await mcp('/_cubby/mcp', rpc(5, 'resources/list'), MCP_TOKEN)
+  assert.equal(unknown.json.error.code, -32601)
+  const bad = await mcp('/_cubby/mcp', '{', MCP_TOKEN)
+  assert.equal(bad.status, 400)
+  assert.deepEqual(bad.json, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } })
+  const discover = await mcp('/_cubby/mcp', rpc(6, 'server/discover', {}), MCP_TOKEN)
+  assert.ok(discover.json.result.supportedVersions.includes('2026-07-28'))
+  assert.equal(discover.json.result._meta['io.modelcontextprotocol/serverInfo'].name, 'cubby-mcp')
+})
+
+await test('mcp: platform tools list apps and query records with bound params', async () => {
+  if (!mcpConfigured) return
+  const list = await mcp('/_cubby/mcp', rpc(7, 'tools/list'), MCP_TOKEN)
+  const names = list.json.result.tools.map((t) => t.name)
+  assert.ok(names.includes('list_apps'), names.join(','))
+  assert.ok(names.includes('query_records'))
+
+  const apps = await mcp('/_cubby/mcp', toolCall(8, 'list_apps', {}), MCP_TOKEN)
+  assert.equal(apps.json.error, undefined, apps.text)
+  const hello = apps.json.result.structuredContent.apps.find((a) => a.name === 'hello')
+  assert.ok(hello, 'list_apps includes hello')
+  assert.equal(hello.mcp, true)
+
+  const query = await mcp(
+    '/_cubby/mcp',
+    toolCall(9, 'query_records', {
+      collection: 'hello_guestbook',
+      filter: 'user = {:u}',
+      params: { u: testUser.id },
+      sort: '-created',
+      perPage: 5,
+    }),
+    MCP_TOKEN
+  )
+  assert.equal(query.json.error, undefined, query.text)
+  assert.equal(query.json.result.isError, undefined, query.text)
+  const items = query.json.result.structuredContent.items
+  assert.ok(items.some((r) => r.id === created.id), 'the smoke guestbook record comes back')
+  assert.ok(items.every((r) => r.user === testUser.id), 'the bound param filtered by user')
+
+  const denied = await mcp('/_cubby/mcp', toolCall(10, 'query_records', { collection: '_superusers' }), MCP_TOKEN)
+  assert.equal(denied.json.error.code, -32602)
+  const one = await mcp('/_cubby/mcp', toolCall(11, 'get_record', { collection: 'hello_guestbook', id: created.id }), MCP_TOKEN)
+  assert.equal(one.json.result.structuredContent.record.id, created.id)
+  const described = await mcp('/_cubby/mcp', toolCall(12, 'describe_app', { app: 'hello' }), MCP_TOKEN)
+  const sc = described.json.result.structuredContent
+  assert.ok(sc.collections.some((c) => c.name === 'hello_guestbook'))
+  assert.ok(sc.mcpTools.some((t) => t.name === 'echo'))
+  assert.equal(typeof sc.tokenConfigured, 'boolean')
+})
+
+await test('mcp: per-app endpoint serves hello tools with its own token', async () => {
+  if (!mcpConfigured) return
+  const first = await mcp('/_cubby/mcp/hello', rpc(13, 'tools/list'), HELLO_MCP_TOKEN)
+  if (first.status === 503) {
+    assert.equal(first.json.code, 'not_configured')
+    console.log('     (no HELLO_MCP_TOKEN in server env; clean 503 verified)')
+    return
+  }
+  assert.equal(first.status, 200, first.text)
+  assert.ok(first.json.result.tools.some((t) => t.name === 'echo'))
+  const crossed = await mcp('/_cubby/mcp/hello', rpc(14, 'ping'), MCP_TOKEN)
+  assert.equal(crossed.status, 401, 'the platform token must not open an app endpoint')
+  const echo = await mcp('/_cubby/mcp/hello', toolCall(15, 'echo', { text: 'hi from smoke' }), HELLO_MCP_TOKEN)
+  assert.deepEqual(echo.json.result.content, [{ type: 'text', text: 'hi from smoke' }])
+  const bad = await mcp('/_cubby/mcp/hello', toolCall(16, 'echo', { txt: 'nope' }), HELLO_MCP_TOKEN)
+  assert.equal(bad.json.error.code, -32602)
+  const recent = await mcp('/_cubby/mcp/hello', toolCall(17, 'guestbook_recent', { limit: 3 }), HELLO_MCP_TOKEN)
+  assert.ok(recent.json.result.structuredContent.entries.length <= 3)
+  const missing = await mcp('/_cubby/mcp/not-an-app', rpc(18, 'ping'), HELLO_MCP_TOKEN)
+  assert.equal(missing.status, 404)
+  assert.equal(missing.json.code, 'not_found')
 })
 
 if (created) await cubby.db.collection('guestbook').delete(created.id).catch(() => {})

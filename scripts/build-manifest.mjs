@@ -123,6 +123,35 @@ if (origin) {
   }
 }
 
+// MCP declarations (cubby.json "mcp": { "enabled": true }) are served by
+// pb_hooks/mcp.pb.js from pb_hooks/apps/<slug>/mcp.js. Tools live in code
+// so schema and handler cannot drift; an enabled app without the module
+// would 500 on every call, so fail the build naming the app instead.
+{
+  const missing = []
+  for (const entry of readdirSync(publicDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const manifestPath = path.join(publicDir, entry.name, 'cubby.json')
+    if (!existsSync(manifestPath)) continue
+    let manifest = {}
+    try {
+      manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+    } catch {
+      continue // already reported above for visible apps
+    }
+    if (manifest.mcp?.enabled !== true) continue
+    const module = path.join(root, 'pb_hooks', 'apps', entry.name, 'mcp.js')
+    if (!existsSync(module)) missing.push(`${entry.name}: pb_hooks/apps/${entry.name}/mcp.js`)
+  }
+  if (missing.length) {
+    console.error(
+      `apps declaring "mcp": { "enabled": true } must ship a tool module ` +
+        `(see pb_hooks/apps/hello/mcp.js):\n  ${missing.join('\n  ')}`
+    )
+    process.exit(1)
+  }
+}
+
 // JSON-LD (schema.org): the discovery site advertises a WebSite plus an
 // ItemList of visible apps; each visible app advertises a WebApplication
 // built from its cubby.json. The build owns exactly one block per page,

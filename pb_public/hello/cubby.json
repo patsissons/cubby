@@ -25,5 +25,10 @@
       "system": "^You greet people warmly in one short sentence\\.$",
       "user": "^Say hello to .{1,80}!$"
     }
+  },
+  "mcp": {
+    "enabled": true,
+    "description": "Hello guestbook",
+    "instructions": "Read-only demo tools for the hello app: echo checks the connection, guestbook_recent lists the newest guestbook entries."
   }
 }

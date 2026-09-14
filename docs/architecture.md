@@ -724,6 +724,111 @@ ever reach policy combinations some committed manifest already allows.
 Keys: set `OPENROUTER_API_KEY` in the PocketHost dashboard (instance >
 Secrets), then power the instance off and on.
 
+## MCP: agent access (opt-in)
+
+External agent sessions (Claude Code, or anything that speaks the Model
+Context Protocol) can read and write an app's data through tools the app
+defines, without a browser or a PocketBase session. `pb_hooks/mcp.pb.js`
+registers two stateless Streamable-HTTP MCP servers, both JSON-RPC 2.0
+over plain `application/json` (no SSE, no sessions):
+
+- `POST /_cubby/mcp` serves platform-wide, read-only exploration tools.
+  Bearer token from the `CUBBY_MCP_TOKEN` instance env var.
+- `POST /_cubby/mcp/<app>` serves that app's own tools, defined in
+  `pb_hooks/apps/<app>/mcp.js` and enabled by an `"mcp"` block in its
+  `cubby.json`. Bearer token from `<APP>_MCP_TOKEN` (the slug in upper snake
+  case, hyphens as underscores: `HELLO_MCP_TOKEN`, `MY_APP_MCP_TOKEN`).
+
+Auth is a static bearer token compared in constant time, checked before the
+body is parsed. A missing env var answers `503 not_configured`; a missing or
+wrong token answers `401 unauthorized` with deliberately NO
+`WWW-Authenticate` header, so MCP clients never start OAuth discovery
+against PocketBase. A leaked app token opens only that app's tools; the
+platform token opens only the platform tools. `GET` and `DELETE` on either
+path answer `405` with `Allow: POST`; `Mcp-Session-Id` is never minted and
+`MCP-Protocol-Version` is ignored. Two handshakes are answered from one
+server description: the legacy `initialize` (protocol revisions 2025-03-26
+through 2025-11-25, negotiated to the client's version when known) and the
+2026-07-28 `server/discover`. A request that carries a modern protocol
+version in `params._meta` (how 2026-07-28 clients such as current Claude
+Code speak) gets that revision's result shape: `resultType: "complete"` on
+every result plus the caching hints (`ttlMs`, `cacheScope: "private"`) on
+`tools/list` and `server/discover`; `initialize`-era clients get the plain
+shapes. Every dispatched message is HTTP 200 (or 202
+with no body for notification-only requests); only parse errors (400 with a
+`-32700` envelope), auth (401/503) and routing (404/405) use HTTP status.
+
+The manifest block:
+
+```json
+"mcp": {
+  "enabled": true,
+  "description": "short serverInfo.title",
+  "instructions": "optional; returned verbatim by the handshake"
+}
+```
+
+There is no `tools` key (tools live in code so schema and handler cannot
+drift) and no token override (the env var name is derived). The build fails
+naming any app that enables `mcp` without shipping its module.
+
+The module contract, `pb_hooks/apps/<app>/mcp.js` (require-only, so the
+app-hook shim registers nothing for it at boot):
+
+```js
+module.exports = {
+  tools: [{ name, description, inputSchema, annotations }], // MCP tool definitions
+  call(name, args, ctx) { ... },
+}
+```
+
+`ctx` is `{ app, slug, manifest, mcp, request, log }` (`app` is the
+PocketBase app for DAO calls, `log` prefixes `[mcp:<slug>]`). `call` may
+return a string (one text content item), an object with a `content` array
+(passed through verbatim), or any other object (pretty JSON text plus
+`structuredContent`). Throw an `Error` for a tool failure the model should
+see (`isError: true` result); throw `{ code: 'invalid_params', message }`
+for a bad request (JSON-RPC `-32602`). Tool names must match
+`^[a-z][a-z0-9_]{0,63}$`; the module is validated at load and an invalid one
+answers `500 mcp_module_invalid` naming the file. Arguments are checked
+against each tool's `inputSchema` (a JSON Schema subset: type, required,
+properties, additionalProperties:false, enum, min/max, minLength/maxLength,
+pattern, items) before `call` runs. `pb_hooks/apps/hello/mcp.js` is the
+reference module (`echo`, `guestbook_recent`).
+
+Platform tools (`pb_hooks/lib/mcp-platform-tools.js`, all read-only):
+`list_apps` (every manifest, hidden apps included), `describe_app`
+(manifest, the app's `<slug>_`-prefixed collections with rules, indexes and
+fields, its MCP tools, and whether its token is configured, never the
+value), `list_collections`, `query_records` (a PocketBase filter expression
+with values bound through `{:name}` placeholders and a `params` object,
+paged, parsed by PocketBase, never raw SQL) and `get_record`. Reads go
+through the DAO, so hook-only collections are readable too: the caller holds
+the operator token. System and `_`-prefixed collections are refused.
+
+Limits: 1 MB request body, 20 messages per batch, text results truncated at
+200k chars with a trailing `[truncated]`. Tool modules are loaded per
+request but the JSVM caches `require`, so editing one needs a restart
+(PocketHost: power cycle). On PocketHost the instance hibernates when idle,
+so an agent's first call after a quiet spell pays the cold start.
+
+Claude Code wiring, in the project's `.mcp.json` (`${VAR}` expands from the
+agent's environment, so the token never lands in the file):
+
+```json
+{
+  "mcpServers": {
+    "hello": {
+      "type": "http",
+      "url": "https://<HOST>/_cubby/mcp/hello",
+      "headers": { "Authorization": "Bearer ${HELLO_MCP_TOKEN}" }
+    }
+  }
+}
+```
+
+Or one-off: `claude mcp add --transport http hello https://<HOST>/_cubby/mcp/hello --header "Authorization: Bearer $HELLO_MCP_TOKEN"`.
+
 ## Rooms: cubby.rooms
 
 Presence and events over PocketBase realtime, which is SSE (not WebSocket).
