@@ -5,8 +5,10 @@
 // The protocol core (parseBody, dispatch, validateArgs, shapeResult,
 // describeServer, validateModule) touches no JSVM globals, so
 // scripts/mcp-tests.mjs loads this file in plain Node. The helpers at the
-// bottom (readBearer, checkToken, loadAppMcp, loadModule) do use JSVM
-// globals and are only called from pb_hooks/mcp.pb.js.
+// bottom (readBearer, checkToken, loadAppMcp, loadModule, serve) do use JSVM
+// globals and are only called from pb_hooks/mcp.pb.js, whose handlers are
+// one-liners: the JSVM re-evaluates each handler in an isolated context, so
+// a handler cannot call a sibling top-level function, only what it requires.
 //
 // Both endpoints are stateless Streamable HTTP: one POST per message (or
 // legacy batch), plain application/json responses, no SSE, no sessions.
@@ -16,6 +18,7 @@
 
 const SUPPORTED_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26']
 const DISCOVER_VERSIONS = ['2026-07-28'].concat(SUPPORTED_VERSIONS)
+const BODY_LIMIT = 1048576
 const MAX_BATCH = 20
 const MAX_TEXT = 200000
 const TOOL_NAME_RE = /^[a-z][a-z0-9_]{0,63}$/
@@ -376,9 +379,102 @@ function loadModule(file) {
   return module
 }
 
+/** GET/DELETE on an MCP endpoint: no SSE stream, no sessions to end. */
+function methodNotAllowed(e) {
+  e.response.header().set('Allow', 'POST')
+  e.response.header().set('Cache-Control', 'no-store')
+  return e.json(405, { code: 'method_not_allowed', message: 'MCP endpoints accept POST only' })
+}
+
+/**
+ * The whole request flow for both endpoints; `slug` is '' for the platform
+ * endpoint. Every early exit is a plain { code, message } JSON error; only
+ * parse failures answer with a JSON-RPC error envelope (HTTP 400).
+ * Everything dispatched is HTTP 200, or 202 for notification-only requests.
+ * The token is checked before the body is parsed, and a 401 carries no
+ * WWW-Authenticate so MCP clients never start OAuth discovery.
+ */
+function serve(e, slug) {
+  const started = Date.now()
+  const endpoint = slug ? `/_cubby/mcp/${slug}` : '/_cubby/mcp'
+  e.response.header().set('Cache-Control', 'no-store')
+
+  const fail = (status, code, message) => {
+    console.log(`[mcp] ${endpoint} - ${Date.now() - started}ms err:${code}`)
+    return e.json(status, { code, message })
+  }
+
+  let manifest = null
+  let mcp = null
+  if (slug) {
+    if (!/^[a-z0-9-]{1,100}$/.test(slug)) return fail(400, 'bad_request', 'invalid app slug')
+    const loaded = loadAppMcp(slug)
+    if (!loaded) return fail(404, 'not_found', `app "${slug}" does not declare mcp`)
+    manifest = loaded.manifest
+    mcp = loaded.mcp
+  }
+
+  const varName = tokenVar(slug)
+  const expected = $os.getenv(varName)
+  if (!expected) return fail(503, 'not_configured', `${varName} is not set`)
+  if (!checkToken(readBearer(e), expected)) return fail(401, 'unauthorized', 'bearer token missing or invalid')
+
+  // Raw body, not requestInfo().body: JSON-RPC batches are arrays.
+  let raw = ''
+  try {
+    raw = toString(e.request.body, BODY_LIMIT)
+  } catch (err) {
+    raw = ''
+  }
+  let parsed
+  try {
+    parsed = parseBody(raw)
+  } catch (err) {
+    console.log(`[mcp] ${endpoint} - ${Date.now() - started}ms err:parse`)
+    return e.json(400, errorResponse(null, ERR.PARSE, 'parse error'))
+  }
+
+  const file = slug ? `${__hooks}/apps/${slug}/mcp.js` : `${__hooks}/lib/mcp-platform-tools.js`
+  let module
+  try {
+    module = loadModule(file)
+  } catch (err) {
+    console.log(`[mcp] ${endpoint} - ${Date.now() - started}ms err:mcp_module_invalid ${err.message}`)
+    return e.json(500, { code: 'mcp_module_invalid', message: err.message })
+  }
+  if (!mcp) mcp = module.mcp || { enabled: true, description: 'cubby platform explorer', instructions: '' }
+
+  const tag = slug || 'platform'
+  const ctx = {
+    app: e.app,
+    slug,
+    manifest,
+    mcp,
+    request: e.request,
+    log: (msg) => console.log(`[mcp:${tag}] ${msg}`),
+  }
+  const describe = describeServer({ name: slug ? `cubby-mcp:${slug}` : 'cubby-mcp', mcp })
+
+  let out
+  try {
+    out = dispatch(parsed.messages, parsed.batch, { module, describe, ctx })
+  } catch (err) {
+    console.log(`[mcp] ${endpoint} - ${Date.now() - started}ms err:internal ${err && err.message ? err.message : err}`)
+    return e.json(500, { code: 'mcp_internal', message: 'dispatch failed' })
+  }
+
+  // One line per request; never the token, arguments, or results.
+  console.log(
+    `[mcp] ${endpoint} ${out.methods.join(',') || '-'} ${Date.now() - started}ms ${out.errors ? `err:${out.errors}` : 'ok'}`
+  )
+  if (out.status === 202) return e.noContent(202)
+  return e.json(200, out.body)
+}
+
 module.exports = {
   SUPPORTED_VERSIONS,
   DISCOVER_VERSIONS,
+  BODY_LIMIT,
   MAX_BATCH,
   MAX_TEXT,
   TOOL_NAME_RE,
@@ -395,4 +491,6 @@ module.exports = {
   checkToken,
   loadAppMcp,
   loadModule,
+  methodNotAllowed,
+  serve,
 }
