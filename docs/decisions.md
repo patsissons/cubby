@@ -412,3 +412,33 @@ hook-written collection can set its client write rules to `null` for real
 server-only write enforcement. Manifest-driven platform hooks remain the
 preferred shape when a need generalizes; `pb_hooks/apps/` is for the code
 that is genuinely one app's own.
+
+## MCP is a platform hook with per-app tool modules
+
+Agents working outside the browser (Claude Code and anything else that
+speaks the Model Context Protocol) had no way into an app's data: every
+route was keyed to a PocketBase session, and an agent has no OAuth browser
+to obtain one. `e.auth` needs a PB session, so PB auth was never an option
+for this caller. The resolution is a static bearer token from an instance
+env var, checked in constant time before the body is even parsed. Tokens
+are per app (`<APP>_MCP_TOKEN`) plus one platform explorer token
+(`CUBBY_MCP_TOKEN`): a leaked app token opens only that app's tools, and the
+env var name is derived from the slug so no manifest can point at another
+app's secret. A 401 deliberately omits `WWW-Authenticate`, because an MCP
+client that sees one starts OAuth discovery against PocketBase and fails
+confusingly instead of plainly.
+
+The servers are stateless on purpose. The JSVM is synchronous, PocketHost
+hibernates idle instances, and nothing here can hold an SSE stream open or
+remember a session across a cold start; so one POST per message, plain JSON
+replies, 405 on GET/DELETE, and no session ids. That is also why both
+handshakes are answered from one description: `initialize` for the clients
+that exist today, `server/discover` for the 2026-07-28 revision that
+removed sessions and made exactly this shape the norm.
+
+Tools live in code (`pb_hooks/apps/<slug>/mcp.js`), not in the manifest,
+so the schema and the handler cannot drift; the manifest only flips the
+endpoint on and names it. That keeps the app-hook carve-out intact: the
+module is app-owned and ships in the app's PR, the route and the protocol
+are platform and never edited per app, and the build refuses an app that
+enables mcp without its module rather than shipping an endpoint that 500s.

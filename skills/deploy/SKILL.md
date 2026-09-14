@@ -66,7 +66,11 @@ clean `provider_unconfigured` error to apps. Check current model ids in
 `cubby.config.json` against `https://openrouter.ai/api/v1/models`
 occasionally; they age. App hooks that need their own secrets go in the same
 Secrets tab, named with the app's slug as prefix (`HELLO_*` for the `hello`
-app, `MY_APP_*` for `my-app`), and need the same power cycle.
+app, `MY_APP_*` for `my-app`), and need the same power cycle. So do the MCP
+bearer tokens: `CUBBY_MCP_TOKEN` for the platform explorer endpoint and
+`<APP>_MCP_TOKEN` for each app that declares `mcp` (generate each with
+`openssl rand -hex 32`); until set, the endpoint answers a clean
+`not_configured` 503.
 
 ## 4. OAuth providers
 

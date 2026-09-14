@@ -376,6 +376,136 @@ routerAdd('GET', '/_cubby/apps/my-app/lookup', (e) => {
 
 Note the env var name: `my-app` owns it, so it is `MY_APP_API_KEY`.
 
+## MCP tools (optional, server-side)
+
+An app can expose tools to external agent sessions (Claude Code) over the
+Model Context Protocol. The platform serves them at `POST /_cubby/mcp/<name>`
+(stateless JSON-RPC, bearer token, no browser session involved); the app
+supplies only the manifest flag and a tool module.
+
+1. Declare it in `cubby.json`:
+
+   ```json
+   "mcp": {
+     "enabled": true,
+     "description": "My App tools",
+     "instructions": "optional guidance returned verbatim to the agent"
+   }
+   ```
+
+   No `tools` key (tools live in code so schema and handler cannot drift) and
+   no token setting (the env var name is derived). Hidden apps can still
+   expose tools; the manifest flag is what matters.
+
+2. Ship `pb_hooks/apps/<name>/mcp.js` (require-only; the app-hook shim
+   ignores non-`.pb.js` files, so nothing registers at boot). The build fails
+   naming the app if the flag is set without this file.
+
+   ```js
+   const readOnly = { readOnlyHint: true }
+
+   const tools = [
+     {
+       name: 'item_get',                      // ^[a-z][a-z0-9_]{0,63}$, unique
+       description: 'Fetch one item by id.',
+       inputSchema: {
+         type: 'object',
+         required: ['id'],
+         properties: { id: { type: 'string', minLength: 1 } },
+         additionalProperties: false,
+       },
+       annotations: readOnly,
+     },
+     {
+       name: 'item_create',
+       description: 'Create an item.',
+       inputSchema: {
+         type: 'object',
+         required: ['title'],
+         properties: { title: { type: 'string', maxLength: 200 } },
+         additionalProperties: false,
+       },
+     },
+   ]
+
+   function call(name, args, ctx) {
+     // ctx = { app, slug, manifest, mcp, request, log }; app is the PocketBase
+     // app (DAO access bypasses collection rules, like any hook).
+     switch (name) {
+       case 'item_get': {
+         let record
+         try {
+           record = ctx.app.findRecordById('my_app_items', args.id)
+         } catch (err) {
+           throw new Error(`item ${args.id} not found`)   // -> isError tool result
+         }
+         return record.publicExport()                    // object -> JSON + structuredContent
+       }
+       case 'item_create': {
+         const collection = ctx.app.findCollectionByNameOrId('my_app_items')
+         const record = new Record(collection)
+         record.set('title', args.title)
+         ctx.app.save(record)
+         ctx.log(`created ${record.id}`)
+         return `created ${record.id}`                   // string -> text content
+       }
+       default:
+         throw { code: 'invalid_params', message: `unknown tool "${name}"` } // -> -32602
+     }
+   }
+
+   module.exports = { tools, call }
+   ```
+
+   Arguments are validated against `inputSchema` (type, required,
+   properties, additionalProperties:false, enum, min/max, minLength/maxLength,
+   pattern, items) before `call` runs. Return a string, an object, or
+   `{ content: [...] }` verbatim; text results are truncated at 200k chars.
+
+3. The token is the app-prefixed env var `<NAME>_MCP_TOKEN` (`my-app` reads
+   `MY_APP_MCP_TOKEN`), set in the PocketHost Secrets tab like any app secret
+   and exported before `npm run dev` locally. Generate one with
+   `openssl rand -hex 32`. Unset means the endpoint answers a clean
+   `not_configured` 503.
+
+4. Self-test with curl (expect 401 without the header, 200 with it):
+
+   ```sh
+   export MY_APP_MCP_TOKEN=dev-token   # then (re)start npm run dev
+   curl -s -X POST localhost:8090/_cubby/mcp/my-app \
+     -H 'content-type: application/json' -H "Authorization: Bearer $MY_APP_MCP_TOKEN" \
+     -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+   curl -s -X POST localhost:8090/_cubby/mcp/my-app \
+     -H 'content-type: application/json' -H "Authorization: Bearer $MY_APP_MCP_TOKEN" \
+     -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"item_get","arguments":{"id":"abc"}}}'
+   ```
+
+5. Wire it into Claude Code, either per project in `.mcp.json` (`${VAR}`
+   expands from the agent's environment, so the token never lands in the
+   file):
+
+   ```json
+   {
+     "mcpServers": {
+       "my-app": {
+         "type": "http",
+         "url": "https://<HOST>/_cubby/mcp/my-app",
+         "headers": { "Authorization": "Bearer ${MY_APP_MCP_TOKEN}" }
+       }
+     }
+   }
+   ```
+
+   or one-off: `claude mcp add --transport http my-app https://<HOST>/_cubby/mcp/my-app --header "Authorization: Bearer $MY_APP_MCP_TOKEN"`.
+   Then `/mcp` in a session lists the tools.
+
+Notes: the module is loaded per request but the JSVM caches `require`, so
+edits to `mcp.js` need a restart (`npm run dev` again locally; PocketHost:
+power cycle). Anything the tools write bypasses collection rules, so keep
+write tools narrow and validate inputs in the schema. The platform's own
+read-only explorer lives at `POST /_cubby/mcp` behind `CUBBY_MCP_TOKEN`;
+`describe_app` there shows your collections and tools as an agent sees them.
+
 ## What NOT to touch
 
 - `foundation/`, `pb_public/js/`, `pb_public/css/` (built artifacts)
@@ -404,7 +534,8 @@ not part of adding an app.
 ## PR shape
 
 One app directory + optional `_app_<name>_` migrations + optional
-`pb_hooks/apps/<name>/` hooks + the regenerated build artifacts:
+`pb_hooks/apps/<name>/` hooks (and `mcp.js` when the manifest declares
+`mcp`) + the regenerated build artifacts:
 `sites.json`, the llms.txt files (root and the app's own),
 and the root `pb_public/index.html` (its JSON-LD app list grows).
 `pb_public/cubby.config.json` is a build-time copy of the root config:

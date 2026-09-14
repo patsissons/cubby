@@ -84,7 +84,10 @@ pb_public/<app>/        one directory per app (html/js/css + cubby.json)
 pb_public/index.html    discovery site
 pb_hooks/               platform hooks (PocketBase JSVM): AI proxy, rooms
                         sweeper, stats, permalinks, app-hook loader
+pb_hooks/mcp.pb.js      MCP endpoints for agent sessions (platform explorer
+                        + per-app tool modules), bearer tokens from env
 pb_hooks/apps/<app>/    app-owned server hooks, loaded by the platform shim
+                        (plus mcp.js, the app's MCP tools, when declared)
 pb_migrations/          platform + app collections
 scripts/                dev server, scaffolder, manifest, smoke test
 skills/                 agent skills (init, deploy, new-app, update)

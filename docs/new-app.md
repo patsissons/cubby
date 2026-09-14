@@ -54,6 +54,12 @@ synchronous (`$http.send`, no fetch/Promises). Hooks bypass collection
 rules, so a hook-written collection can set its client write rules to `null`.
 See the worked example in `skills/new-app/SKILL.md` ("App hooks").
 
+An app can also expose tools to agent sessions over MCP: declare
+`"mcp": { "enabled": true }` in `cubby.json` and ship
+`pb_hooks/apps/my-app/mcp.js` (tools + `call`), served at
+`/_cubby/mcp/my-app` behind `MY_APP_MCP_TOKEN`. See "MCP tools" in
+`skills/new-app/SKILL.md` and docs/architecture.md.
+
 ## What not to touch
 
 The foundation (`foundation/`, `pb_public/js/`), server hooks (`pb_hooks/`
