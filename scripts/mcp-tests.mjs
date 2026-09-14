@@ -278,6 +278,36 @@ await test('long text results are truncated', () => {
   assert.deepEqual(lib.shapeResult('short'), { content: [{ type: 'text', text: 'short' }] })
 })
 
+// --- era selection ---
+
+await test('modern requests (params._meta protocolVersion) get resultType: complete', () => {
+  const meta = { 'io.modelcontextprotocol/protocolVersion': '2026-07-28', 'io.modelcontextprotocol/clientInfo': { name: 't', version: '0' } }
+  assert.deepEqual(run(req(1, 'ping', { _meta: meta })).body.result, { resultType: 'complete' })
+  const list = run(req(2, 'tools/list', { _meta: meta })).body.result
+  assert.equal(list.resultType, 'complete')
+  assert.equal(list.tools.length, fake.tools.length)
+  assert.ok(Number.isInteger(list.ttlMs) && list.ttlMs >= 0, 'tools/list carries a caching TTL')
+  assert.ok(['public', 'private'].includes(list.cacheScope))
+  const called = run(req(3, 'tools/call', { name: 'str', arguments: {}, _meta: meta })).body.result
+  assert.equal(called.resultType, 'complete')
+  assert.equal(called.content[0].text, 'hello world')
+  const discover = run(req(4, 'server/discover', { _meta: meta })).body.result
+  assert.equal(discover.resultType, 'complete')
+  assert.ok(Number.isInteger(discover.ttlMs) && discover.ttlMs >= 0)
+  assert.equal(discover.cacheScope, 'private')
+  // errors are untouched
+  assert.equal(run(req(5, 'nope', { _meta: meta })).body.error.code, -32601)
+})
+
+await test('legacy requests get the plain result shapes', () => {
+  assert.deepEqual(run(req(1, 'ping')).body.result, {})
+  const legacyMeta = { 'io.modelcontextprotocol/protocolVersion': '2025-11-25' }
+  assert.deepEqual(run(req(1, 'ping', { _meta: legacyMeta })).body.result, {})
+  assert.equal(run(req(2, 'tools/list')).body.result.resultType, undefined)
+  assert.equal(run(req(2, 'tools/list')).body.result.ttlMs, undefined)
+  assert.equal(run(call(3, 'str', {})).body.result.resultType, undefined)
+})
+
 // --- token var naming (pure) ---
 
 await test('tokenVar derives the env var name from the slug', () => {

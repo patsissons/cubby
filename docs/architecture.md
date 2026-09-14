@@ -749,7 +749,12 @@ path answer `405` with `Allow: POST`; `Mcp-Session-Id` is never minted and
 `MCP-Protocol-Version` is ignored. Two handshakes are answered from one
 server description: the legacy `initialize` (protocol revisions 2025-03-26
 through 2025-11-25, negotiated to the client's version when known) and the
-2026-07-28 `server/discover`. Every dispatched message is HTTP 200 (or 202
+2026-07-28 `server/discover`. A request that carries a modern protocol
+version in `params._meta` (how 2026-07-28 clients such as current Claude
+Code speak) gets that revision's result shape: `resultType: "complete"` on
+every result plus the caching hints (`ttlMs`, `cacheScope: "private"`) on
+`tools/list` and `server/discover`; `initialize`-era clients get the plain
+shapes. Every dispatched message is HTTP 200 (or 202
 with no body for notification-only requests); only parse errors (400 with a
 `-32700` envelope), auth (401/503) and routing (404/405) use HTTP status.
 

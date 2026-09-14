@@ -19,6 +19,10 @@
 const SUPPORTED_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26']
 const DISCOVER_VERSIONS = ['2026-07-28'].concat(SUPPORTED_VERSIONS)
 const BODY_LIMIT = 1048576
+// 2026-07-28 caching hints on server/discover and tools/list: tool modules
+// only change on restart, and the endpoint is token-gated, so private scope.
+const CACHE_TTL_MS = 300000
+const CACHE_SCOPE = 'private'
 const MAX_BATCH = 20
 const MAX_TEXT = 200000
 const TOOL_NAME_RE = /^[a-z][a-z0-9_]{0,63}$/
@@ -116,6 +120,8 @@ function describeServer(opts) {
         supportedVersions: DISCOVER_VERSIONS.slice(),
         capabilities,
         _meta: { 'io.modelcontextprotocol/serverInfo': serverInfo },
+        ttlMs: CACHE_TTL_MS,
+        cacheScope: CACHE_SCOPE,
       }
       if (instructions) result.instructions = instructions
       return result
@@ -264,6 +270,18 @@ function handleMethod(method, params, opts) {
   }
 }
 
+/**
+ * A request from a modern (2026-07-28+) client carries its protocol version
+ * in params._meta. That revision's results are MRTR-shaped and MUST carry
+ * resultType ("complete" here: nothing asks the client for more input).
+ * Legacy initialize-era clients get the plain shapes they expect.
+ */
+function isModernRequest(params) {
+  const meta = params && params._meta
+  const version = meta && typeof meta === 'object' ? meta['io.modelcontextprotocol/protocolVersion'] : undefined
+  return typeof version === 'string' && !SUPPORTED_VERSIONS.includes(version)
+}
+
 /** Handle one message; returns a response object, or undefined for notifications. */
 function handleMessage(msg, opts) {
   const isObject = msg && typeof msg === 'object' && !Array.isArray(msg)
@@ -276,7 +294,15 @@ function handleMessage(msg, opts) {
   if (msg.id === undefined) return undefined
   const params = msg.params && typeof msg.params === 'object' && !Array.isArray(msg.params) ? msg.params : {}
   try {
-    return { jsonrpc: '2.0', id: msg.id, result: handleMethod(msg.method, params, opts) }
+    const result = handleMethod(msg.method, params, opts)
+    if (isModernRequest(params) && result && typeof result === 'object') {
+      if (result.resultType === undefined) result.resultType = 'complete'
+      if (msg.method === 'tools/list') {
+        result.ttlMs = CACHE_TTL_MS
+        result.cacheScope = CACHE_SCOPE
+      }
+    }
+    return { jsonrpc: '2.0', id: msg.id, result }
   } catch (err) {
     if (err && err.rpc) return errorResponse(msg.id, err.code, err.message, err.data)
     return errorResponse(msg.id, ERR.INTERNAL, clip(err && err.message ? err.message : String(err), 300))
