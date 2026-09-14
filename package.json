@@ -18,10 +18,11 @@
     "build:foundation": "node foundation/build.mjs",
     "build:manifest": "node scripts/build-manifest.mjs",
     "new-app": "node scripts/new-app.mjs",
-    "test": "npm run test:core && npm run test:markdown && npm run test:widgets",
+    "test": "npm run test:core && npm run test:markdown && npm run test:widgets && npm run test:mcp",
     "test:core": "node scripts/core-tests.mjs",
     "test:widgets": "node scripts/widget-tests.mjs",
     "test:markdown": "node scripts/markdown-tests.mjs",
+    "test:mcp": "node scripts/mcp-tests.mjs",
     "seed": "node scripts/seed.mjs",
     "deploy": "phio deploy -v"
   },
