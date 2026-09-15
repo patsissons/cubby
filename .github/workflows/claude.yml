@@ -46,7 +46,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: env.HAS_AUTH == 'true'
         with:
-          node-version: 24
+          node-version: 26
           cache: npm
 
       - uses: anthropics/claude-code-action@v1
