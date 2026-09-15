@@ -10,7 +10,7 @@
   "license": "MIT",
   "repository": "https://github.com/patsissons/cubby",
   "engines": {
-    "node": ">=24"
+    "node": ">=26"
   },
   "scripts": {
     "dev": "node scripts/dev.mjs",
