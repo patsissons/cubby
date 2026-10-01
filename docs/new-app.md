@@ -62,7 +62,9 @@ An app can also expose tools to agent sessions over MCP: declare
 
 Agents that only curl see what `GET /_cubby/content/my-app` renders: the
 static index.html as markdown. If the page fills containers from data, ship
-`pb_hooks/apps/my-app/content.js` so the snapshot shows that data too. If the
+`pb_hooks/apps/my-app/content.js` so the snapshot shows that data too. If it
+has hash routes, export `route(ctx)` there as well, so the deep link
+`/my-app/#/x` reads at `/_cubby/content/my-app/x`. If the
 app sits behind sign-in, declare `"access": { "allowedUsers": [...] }` in
 `cubby.json` and no snapshot is served. See "Agent-readable content" in
 `skills/new-app/SKILL.md`.

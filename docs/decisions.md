@@ -474,3 +474,21 @@ For now its presence alone withholds everything, because the public
 endpoint has no caller identity to match against. It fails closed: a
 malformed block counts as gated on the server and fails the build.
 
+### Routes, and pointers in the body
+
+The first cut made one snapshot per app. That fails the apps where the
+content lives behind hash routes (a recipe box, `#/r/<slug>`): the server
+never sees the fragment, and the hook couldn't tell which view was wanted.
+Worse, `/_cubby/content/recipes/r/x` matched no route and fell through to
+the static fallback, a 200 page shell that looks like success. Routes are
+now part of the path (`/_cubby/content/<app>/<route>`), answered only by
+an app that exports `route(ctx)`. Every other route is an explicit
+`404 route_not_found`, because for an agent a confident wrong answer is
+worse than a miss.
+
+The `<head>` link alone didn't reach agents that hold only a page URL:
+HTML-to-text fetch tools drop `<head>`. A `<noscript>` paragraph in the
+body is the one place that is content exactly when JS doesn't run, which
+describes those fetchers. So the build adds one there too, with the
+deep-link rule spelled out.
+
