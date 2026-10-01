@@ -5,6 +5,10 @@
 Every app is a single page with hash routing: deep links look like
 /name/#/page. Unknown paths fall back to the discovery site at /.
 
+Pages render in the browser, so fetching an app's HTML returns little more
+than its shell. Fetch https://cubby.pockethost.io/_cubby/content/<app> instead for a markdown
+snapshot of what the page shows (apps that require sign-in return 403).
+
 ## Apps
 
 - [Docs](https://cubby.pockethost.io/docs/): Learn cubby on a single page: the platform, every API, and how to run your own. ([details](https://cubby.pockethost.io/docs/llms.txt))
@@ -14,6 +18,8 @@ Every app is a single page with hash routing: deep links look like
 
 - [Discovery site](https://cubby.pockethost.io/): searchable index of every app
 - [App registry](https://cubby.pockethost.io/sites.json): machine-readable manifest (name, title, description, category, tags)
+- [Site content as markdown](https://cubby.pockethost.io/_cubby/content): the discovery site's app list, rendered server-side
+- MCP: POST https://cubby.pockethost.io/_cubby/mcp (Streamable HTTP, operator bearer token): read-only tools including read_app, which returns the same markdown snapshots
 
 Apps are built on the cubby foundation, layered browser bundles: /js/core.js
 (namespace, errors, design tokens; no backend), /js/platform.js (PocketBase

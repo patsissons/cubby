@@ -152,6 +152,81 @@ if (origin) {
   }
 }
 
+// Access declarations (cubby.json "access": { "allowedUsers": [globs] })
+// put an app behind identity: the agent-readable content endpoint and the
+// MCP read_app tool withhold it entirely. The server fails closed on a
+// malformed block, so reject one here and name the app rather than ship a
+// typo that gates (or looks like it should gate) the wrong way.
+const gated = new Set()
+{
+  const problems = []
+  for (const entry of readdirSync(publicDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const manifestPath = path.join(publicDir, entry.name, 'cubby.json')
+    if (!existsSync(manifestPath)) continue
+    let manifest = {}
+    try {
+      manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+    } catch {
+      continue // already reported above for visible apps
+    }
+    const access = manifest.access
+    if (access === undefined || access === null) continue
+    gated.add(entry.name)
+    if (typeof access !== 'object' || Array.isArray(access)) {
+      problems.push(`${entry.name}: "access" must be an object`)
+      continue
+    }
+    for (const key of Object.keys(access)) {
+      if (key !== 'allowedUsers') problems.push(`${entry.name}: unknown access key "${key}"`)
+    }
+    const users = access.allowedUsers
+    if (users !== undefined && !(Array.isArray(users) && users.every((u) => typeof u === 'string' && u))) {
+      problems.push(`${entry.name}: access.allowedUsers must be an array of email globs`)
+    }
+  }
+  if (problems.length) {
+    console.error(
+      `invalid "access" block (expected { "allowedUsers": ["me@x.com", "*@corp.com"] }):\n  ${problems.join('\n  ')}`
+    )
+    process.exit(1)
+  }
+}
+
+// Agent-readable content: pages render in the browser, so an agent that
+// curls one gets an empty shell. Each open app's <head> carries one
+// build-owned <link rel="alternate" type="text/markdown"> tag, tagged
+// data-cubby-content, pointing at its server-rendered snapshot
+// (pb_hooks/content.pb.js). The tag is replaced in place, or appended before
+// </head> when absent. Apps behind identity lose the tag. Relative hrefs, so
+// this runs without a domain.
+{
+  const tagRe = /\n?[ \t]*<link rel="alternate" type="text\/markdown" href="[^"]*" data-cubby-content \/>/
+  const hrefRe = /(<link rel="alternate" type="text\/markdown" href=")[^"]*(" data-cubby-content \/>)/
+  const apply = (page, href) => {
+    const html = readFileSync(page, 'utf8')
+    let updated
+    if (!href) updated = html.replace(tagRe, '')
+    else if (hrefRe.test(html)) updated = html.replace(hrefRe, `$1${href}$2`)
+    else {
+      const tag = `<link rel="alternate" type="text/markdown" href="${href}" data-cubby-content />`
+      updated = html.replace(/\n?( *)<\/head>/, `\n$1  ${tag}\n$1</head>`)
+    }
+    if (updated === html) return false
+    writeFileSync(page, updated)
+    return true
+  }
+  let linked = 0
+  if (apply(path.join(publicDir, 'index.html'), '/_cubby/content')) linked++
+  for (const entry of readdirSync(publicDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !/^[a-z0-9-]+$/.test(entry.name)) continue
+    const page = path.join(publicDir, entry.name, 'index.html')
+    if (!existsSync(page) || !existsSync(path.join(publicDir, entry.name, 'cubby.json'))) continue
+    if (apply(page, gated.has(entry.name) ? '' : `/_cubby/content/${entry.name}`)) linked++
+  }
+  if (linked) console.log(`updated content links in ${linked} page(s)`)
+}
+
 // JSON-LD (schema.org): the discovery site advertises a WebSite plus an
 // ItemList of visible apps; each visible app advertises a WebApplication
 // built from its cubby.json. The build owns exactly one block per page,
@@ -263,17 +338,27 @@ if (origin) {
     if (site.category) lines.push(`- Category: ${site.category}`)
     if (site.tags.length) lines.push(`- Tags: ${site.tags.join(', ')}`)
     if (site.category || site.tags.length) lines.push('')
+    const isGated = gated.has(site.name)
     lines.push(
       `${site.title} is an app on ${siteName}, a shelf of tiny static web apps`,
       'served by one PocketBase instance. It is plain HTML/JS/CSS with',
       'hash routing (internal pages live at #/..., not real subpaths).' +
         (mods.length ? ` It loads the cubby modules: ${mods.join(', ')}.` : ''),
       '',
+      isGated
+        ? 'This app requires sign-in; its content is not available to agents.'
+        : 'Parts of the page may render in the browser, so its HTML can be an empty shell. The markdown snapshot below is what it shows, readable without running JavaScript.',
+      '',
       '## Links',
       '',
-      `- [Open the app](${base}/${site.name}/): ${site.description || site.title}`,
-      `- [All apps on this instance](${base}/llms.txt): the site-wide index`
+      `- [Open the app](${base}/${site.name}/): ${site.description || site.title}`
     )
+    if (!isGated) {
+      lines.push(
+        `- [Page content as markdown](${base}/_cubby/content/${site.name}): what the page renders, for agents that cannot run JavaScript`
+      )
+    }
+    lines.push(`- [All apps on this instance](${base}/llms.txt): the site-wide index`)
     const result = writeLlms(path.join(publicDir, site.name, 'llms.txt'), lines.join('\n'))
     if (result === 'written') written++
     if (result === 'kept') kept++
@@ -291,6 +376,10 @@ if (origin) {
     'Every app is a single page with hash routing: deep links look like',
     '/name/#/page. Unknown paths fall back to the discovery site at /.',
     '',
+    'Pages render in the browser, so fetching an app\'s HTML returns little more',
+    `than its shell. Fetch ${base}/_cubby/content/<app> instead for a markdown`,
+    'snapshot of what the page shows (apps that require sign-in return 403).',
+    '',
     '## Apps',
     '',
     ...sites.map(
@@ -302,6 +391,8 @@ if (origin) {
     '',
     `- [Discovery site](${base}/): searchable index of every app`,
     `- [App registry](${base}/sites.json): machine-readable manifest (name, title, description, category, tags)`,
+    `- [Site content as markdown](${base}/_cubby/content): the discovery site's app list, rendered server-side`,
+    `- MCP: POST ${base}/_cubby/mcp (Streamable HTTP, operator bearer token): read-only tools including read_app, which returns the same markdown snapshots`,
     '',
     'Apps are built on the cubby foundation, layered browser bundles: /js/core.js',
     '(namespace, errors, design tokens; no backend), /js/platform.js (PocketBase',
