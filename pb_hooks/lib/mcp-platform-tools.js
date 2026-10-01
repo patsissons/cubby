@@ -24,8 +24,11 @@ const mcp = {
     'then describe_app for the manifest, collections and field schemas of one app. ' +
     'query_records takes a PocketBase filter expression; bind every value with a ' +
     '{:name} placeholder and pass the values in params (e.g. filter "user = {:u}", ' +
-    'params { "u": "abc123" }). Apps that expose their own tools are served at ' +
-    '/_cubby/mcp/<app> with that app\'s token.',
+    'params { "u": "abc123" }). read_app returns the markdown snapshot of what an app\'s ' +
+    'page shows (pages render in the browser, so their HTML is mostly a shell); the same ' +
+    'text is public at GET /_cubby/content/<app>. Apps whose manifest declares "access" ' +
+    'sit behind identity and have no snapshot. Apps that expose their own tools are ' +
+    'served at /_cubby/mcp/<app> with that app\'s token.',
 }
 
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
@@ -43,6 +46,20 @@ const tools = [
     description:
       'Describe one app: its full cubby.json manifest, every collection prefixed with its slug (rules, indexes, fields), ' +
       'the MCP tools it exposes, and whether its MCP token is configured (never the value).',
+    inputSchema: {
+      type: 'object',
+      required: ['app'],
+      properties: { app: { type: 'string', pattern: '^[a-z0-9-]{1,100}$', description: 'app slug (directory name)' } },
+      additionalProperties: false,
+    },
+    annotations: readOnly,
+  },
+  {
+    name: 'read_app',
+    description:
+      'Read what an app\'s page shows, as markdown: its static HTML converted to text plus the live sections its ' +
+      'content hook fills in (the page itself renders in the browser). The same text is public at ' +
+      'GET /_cubby/content/<app>. Fails with identity_required for apps behind identity (manifest "access").',
     inputSchema: {
       type: 'object',
       required: ['app'],
@@ -202,6 +219,7 @@ function listApps() {
       category: str(manifest.category, ''),
       tags: Array.isArray(manifest.tags) ? manifest.tags : [],
       mcp: !!(manifest.mcp && manifest.mcp.enabled === true),
+      identityRequired: !!require(`${__hooks}/lib/config.js`).parseAccess(manifest),
     })
   }
   apps.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
@@ -236,6 +254,8 @@ function describeApp(app, slug) {
     mcpEndpoint: manifest.mcp && manifest.mcp.enabled === true ? `/_cubby/mcp/${slug}` : null,
     tokenVar: tokenVar(slug),
     tokenConfigured: !!$os.getenv(tokenVar(slug)),
+    identityRequired: !!require(`${__hooks}/lib/config.js`).parseAccess(manifest),
+    contentEndpoint: `/_cubby/content/${slug}`,
   }
   if (mcpError) out.mcpError = mcpError
   return out
@@ -304,12 +324,21 @@ function getRecord(app, args) {
   return { collection: collection.name, record: record.publicExport() }
 }
 
+function readApp(app, slug) {
+  const out = require(`${__hooks}/lib/content.js`).renderContent(app, slug)
+  if (out.code === 'bad_request') throw invalid(out.message)
+  if (out.code) throw new Error(`${out.code}: ${out.message}`)
+  return out.markdown
+}
+
 function call(name, args, ctx) {
   switch (name) {
     case 'list_apps':
       return listApps()
     case 'describe_app':
       return describeApp(ctx.app, args.app)
+    case 'read_app':
+      return readApp(ctx.app, args.app)
     case 'list_collections':
       return listCollections(ctx.app, typeof args.prefix === 'string' ? args.prefix : '')
     case 'query_records':

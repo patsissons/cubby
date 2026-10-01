@@ -802,7 +802,9 @@ Platform tools (`pb_hooks/lib/mcp-platform-tools.js`, all read-only):
 fields, its MCP tools, and whether its token is configured, never the
 value), `list_collections`, `query_records` (a PocketBase filter expression
 with values bound through `{:name}` placeholders and a `params` object,
-paged, parsed by PocketBase, never raw SQL) and `get_record`. Reads go
+paged, parsed by PocketBase, never raw SQL), `get_record` and `read_app`
+(the same markdown snapshot `GET /_cubby/content/<app>` serves; see below).
+`list_apps` and `describe_app` also report `identityRequired`. Reads go
 through the DAO, so hook-only collections are readable too: the caller holds
 the operator token. System and `_`-prefixed collections are refused.
 
@@ -828,6 +830,68 @@ agent's environment, so the token never lands in the file):
 ```
 
 Or one-off: `claude mcp add --transport http hello https://<HOST>/_cubby/mcp/hello --header "Authorization: Bearer $HELLO_MCP_TOKEN"`.
+
+## Agent-readable content: /_cubby/content
+
+Apps render in the browser, so an agent that curls `/<app>/` gets a shell:
+empty lists, "loading..." placeholders, a discovery grid with no cards.
+`pb_hooks/content.pb.js` serves a markdown snapshot of what each page shows
+instead, publicly and with no setup:
+
+- `GET /_cubby/content` is the discovery site: every visible app with its
+  description and content link.
+- `GET /_cubby/content/<app>` is the app's own `index.html` converted to
+  markdown. Scripts, styles, `<head>`, form controls, and anything `hidden`,
+  `aria-hidden="true"` or `display: none` are dropped. Headings, lists,
+  links (made absolute), code blocks and tables survive. The app's optional
+  content hook then fills in the live parts.
+- Responses are `text/markdown; charset=utf-8` with a 60s public cache.
+  Errors are JSON `{ code, message }`: 400 `bad_request`, 404 `not_found`,
+  or 403 `identity_required`. Snapshots are capped at 200k chars.
+
+**The content hook**, `pb_hooks/apps/<app>/content.js`, is optional. Like
+`mcp.js` it is required per request and is not a `.pb.js` file:
+
+```js
+module.exports = {
+  sections(ctx) {
+    const rows = ctx.publicRecords('my_app_items', { sort: '-created', limit: 20 })
+    return [{ target: 'item-list', markdown: rows.map((r) => `- ${r.title}`).join('\n') }]
+  },
+}
+```
+
+A section with `target` replaces the contents of the element with that id,
+the container `app.js` fills in a browser. A section without a target, or
+whose target is missing, is appended under `## <title>`. `ctx` is
+`{ app, slug, manifest, log, publicRecords }`. `publicRecords(collection,
+{ filter, params, sort, limit })` is the only data access a hook gets: it
+refuses any collection whose `listRule` is not `""`, and returns
+`publicExport()` rows, so a snapshot never shows more than an anonymous
+browser could already fetch. A hook that throws or returns a bad shape is
+logged and loses its sections, and the static page is still served.
+`pb_hooks/apps/hello/content.js` is the reference.
+
+**Identity-gated apps** declare an `access` block in `cubby.json`:
+
+```json
+"access": { "allowedUsers": ["me@example.com", "*@corp.com"] }
+```
+
+`allowedUsers` takes email globs. `[]` (or no key) means any signed-in user,
+the same meaning as in `ai.allowedUsers`. If the block is present at all, the
+content endpoint answers `403 identity_required` with no content. `read_app`
+fails the same way. The root snapshot and the app's `llms.txt` say "sign-in
+required", and the build drops the page's content link. The server fails
+closed on a malformed block, and the build rejects one naming the app.
+The block does not gate the static page itself: the browser app still checks
+`cubby.identity` for anything it shows.
+
+**Discovery.** The build gives every open app's `<head>`, and the root
+page's, one `<link rel="alternate" type="text/markdown"
+href="/_cubby/content/<app>" data-cubby-content />`. An agent that curls a
+shell therefore sees where the readable version lives. The `llms.txt` files
+link it too (see below), and so do the platform MCP `instructions`.
 
 ## Rooms: cubby.rooms
 
@@ -904,6 +968,12 @@ discovery site, all from the same source of truth (`cubby.json` files plus
   without the `data-cubby-jsonld` attribute is never touched. Like the og
   rewrite, this pass is skipped entirely when no domain is configured:
   structured data with relative URLs helps nobody.
+- **Content links**: every app page (and the root) gets one
+  `<link rel="alternate" type="text/markdown" ... data-cubby-content />`
+  pointing at its `/_cubby/content` snapshot. Each per-app llms.txt links the
+  snapshot, and the root llms.txt describes the endpoint and the platform
+  MCP. Apps with an `access` block get the "sign-in required" line instead
+  of a link (see "Agent-readable content").
 
 Hidden apps (underscore prefix or `"hidden": true`) appear in neither, and
 `_template` gets nothing. Both outputs are pure functions of the manifests
