@@ -827,6 +827,72 @@ await test('mcp: per-app endpoint serves hello tools with its own token', async 
   assert.equal(missing.json.code, 'not_found')
 })
 
+// Agent-readable content: the public markdown snapshots behind
+// <link rel="alternate" type="text/markdown"> and llms.txt.
+let helloContent = ''
+await test('content: hello snapshot is markdown with the live guestbook filled in', async () => {
+  const res = await fetch(`${BASE}/_cubby/content/hello`)
+  assert.equal(res.status, 200)
+  assert.ok((res.headers.get('content-type') || '').startsWith('text/markdown'))
+  helloContent = await res.text()
+  assert.ok(helloContent.startsWith('# 👋 Hello\n'), helloContent.slice(0, 200))
+  assert.ok(helloContent.includes('## Guestbook'))
+  assert.ok(helloContent.includes(created.message), 'the smoke guestbook entry is in the snapshot')
+  assert.ok(!/<script|<\/?div/i.test(helloContent), 'no markup survives')
+})
+
+await test('content: docs, root, unknown and invalid apps', async () => {
+  const docs = await fetch(`${BASE}/_cubby/content/docs`)
+  assert.equal(docs.status, 200)
+  assert.ok((await docs.text()).includes('## In a nutshell'))
+  const root = await (await fetch(`${BASE}/_cubby/content`)).text()
+  assert.ok(root.includes('/_cubby/content/hello'), root)
+  const missing = await fetch(`${BASE}/_cubby/content/not-an-app`)
+  assert.equal(missing.status, 404)
+  assert.equal((await missing.json()).code, 'not_found')
+  const invalid = await fetch(`${BASE}/_cubby/content/Bad_Name`)
+  assert.equal(invalid.status, 400)
+  const page = await (await fetch(`${BASE}/hello/`)).text()
+  assert.ok(page.includes('href="/_cubby/content/hello" data-cubby-content'), 'the page advertises its snapshot')
+})
+
+await test('content: an app with an access block gets nothing (endpoint and MCP)', async () => {
+  // Manifests are read per request, so gating docs for a moment needs no
+  // restart, but only a local server shares this checkout's pb_public.
+  if (!/^https?:\/\/(127\.0\.0\.1|localhost)(:|$)/.test(BASE)) {
+    console.log('     (remote SMOKE_URL; gating covered by content-tests.mjs)')
+    return
+  }
+  const { readFileSync, writeFileSync } = await import('node:fs')
+  const file = new URL('../pb_public/docs/cubby.json', import.meta.url)
+  const original = readFileSync(file, 'utf8')
+  try {
+    writeFileSync(file, JSON.stringify({ ...JSON.parse(original), access: { allowedUsers: [] } }, null, 2))
+    const res = await fetch(`${BASE}/_cubby/content/docs`)
+    assert.equal(res.status, 403)
+    const body = await res.text()
+    assert.equal(JSON.parse(body).code, 'identity_required')
+    assert.ok(!body.includes('nutshell'), 'no content leaks')
+    assert.ok((await (await fetch(`${BASE}/_cubby/content`)).text()).includes('sign-in required'))
+    if (mcpConfigured) {
+      const read = await mcp('/_cubby/mcp', toolCall(19, 'read_app', { app: 'docs' }), MCP_TOKEN)
+      assert.equal(read.json.result.isError, true)
+      assert.ok(read.json.result.content[0].text.includes('identity_required'))
+    }
+  } finally {
+    writeFileSync(file, original)
+  }
+})
+
+await test('mcp: read_app returns the same snapshot as the public endpoint', async () => {
+  if (!mcpConfigured) return
+  const read = await mcp('/_cubby/mcp', toolCall(20, 'read_app', { app: 'hello' }), MCP_TOKEN)
+  assert.equal(read.json.result.isError, undefined, read.text)
+  assert.equal(read.json.result.content[0].text, helloContent)
+  const apps = await mcp('/_cubby/mcp', toolCall(21, 'list_apps', {}), MCP_TOKEN)
+  assert.equal(apps.json.result.structuredContent.apps.find((a) => a.name === 'hello').identityRequired, false)
+})
+
 if (created) await cubby.db.collection('guestbook').delete(created.id).catch(() => {})
 cubby._pb.authStore.clear()
 cubby2._pb.authStore.clear()
