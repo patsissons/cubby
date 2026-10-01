@@ -856,6 +856,27 @@ await test('content: docs, root, unknown and invalid apps', async () => {
   assert.ok(page.includes('href="/_cubby/content/hello" data-cubby-content'), 'the page advertises its snapshot')
 })
 
+await test('content: routes answer one view or an explicit 404, never the shell', async () => {
+  assert.ok(helloContent.includes(`/_cubby/content/hello/${created.id}`), 'the root snapshot links each entry')
+  const one = await fetch(`${BASE}/_cubby/content/hello/${created.id}`)
+  assert.equal(one.status, 200)
+  assert.ok((one.headers.get('content-type') || '').startsWith('text/markdown'))
+  const view = await one.text()
+  assert.ok(view.startsWith('# Guestbook: '), view.slice(0, 200))
+  assert.ok(view.includes(created.message))
+  assert.ok(view.includes(`/hello/${created.id}`), 'links the permalink page')
+  const hashed = await fetch(`${BASE}/_cubby/content/hello/${encodeURIComponent('#')}/${created.id}`)
+  assert.equal(await hashed.text(), view, 'a leading # is the same route')
+  for (const path of ['/_cubby/content/hello/nope', '/_cubby/content/docs/anything/deeper']) {
+    const miss = await fetch(`${BASE}${path}`)
+    assert.equal(miss.status, 404, path)
+    assert.ok((miss.headers.get('content-type') || '').includes('json'), `${path} is not the HTML shell`)
+    assert.equal((await miss.json()).code, 'route_not_found')
+  }
+  const page = await (await fetch(`${BASE}/hello/`)).text()
+  assert.ok(page.includes('<noscript data-cubby-content>'), 'the page body points agents at the snapshot')
+})
+
 await test('content: an app with an access block gets nothing (endpoint and MCP)', async () => {
   // Manifests are read per request, so gating docs for a moment needs no
   // restart, but only a local server shares this checkout's pb_public.
@@ -873,6 +894,8 @@ await test('content: an app with an access block gets nothing (endpoint and MCP)
     const body = await res.text()
     assert.equal(JSON.parse(body).code, 'identity_required')
     assert.ok(!body.includes('nutshell'), 'no content leaks')
+    const routed = await fetch(`${BASE}/_cubby/content/docs/anything`)
+    assert.equal(routed.status, 403, 'routes are gated too')
     assert.ok((await (await fetch(`${BASE}/_cubby/content`)).text()).includes('sign-in required'))
     if (mcpConfigured) {
       const read = await mcp('/_cubby/mcp', toolCall(19, 'read_app', { app: 'docs' }), MCP_TOKEN)
@@ -889,6 +912,12 @@ await test('mcp: read_app returns the same snapshot as the public endpoint', asy
   const read = await mcp('/_cubby/mcp', toolCall(20, 'read_app', { app: 'hello' }), MCP_TOKEN)
   assert.equal(read.json.result.isError, undefined, read.text)
   assert.equal(read.json.result.content[0].text, helloContent)
+  const routed = await mcp('/_cubby/mcp', toolCall(22, 'read_app', { app: 'hello', route: `#/${created.id}` }), MCP_TOKEN)
+  assert.equal(routed.json.result.isError, undefined, routed.text)
+  assert.ok(routed.json.result.content[0].text.includes(created.message))
+  const miss = await mcp('/_cubby/mcp', toolCall(23, 'read_app', { app: 'hello', route: '/nope' }), MCP_TOKEN)
+  assert.equal(miss.json.result.isError, true)
+  assert.ok(miss.json.result.content[0].text.includes('route_not_found'))
   const apps = await mcp('/_cubby/mcp', toolCall(21, 'list_apps', {}), MCP_TOKEN)
   assert.equal(apps.json.result.structuredContent.apps.find((a) => a.name === 'hello').identityRequired, false)
 })
