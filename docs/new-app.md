@@ -60,6 +60,13 @@ An app can also expose tools to agent sessions over MCP: declare
 `/_cubby/mcp/my-app` behind `MY_APP_MCP_TOKEN`. See "MCP tools" in
 `skills/new-app/SKILL.md` and docs/architecture.md.
 
+Agents that only curl see what `GET /_cubby/content/my-app` renders: the
+static index.html as markdown. If the page fills containers from data, ship
+`pb_hooks/apps/my-app/content.js` so the snapshot shows that data too. If the
+app sits behind sign-in, declare `"access": { "allowedUsers": [...] }` in
+`cubby.json` and no snapshot is served. See "Agent-readable content" in
+`skills/new-app/SKILL.md`.
+
 ## What not to touch
 
 The foundation (`foundation/`, `pb_public/js/`), server hooks (`pb_hooks/`

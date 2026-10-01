@@ -86,8 +86,10 @@ pb_hooks/               platform hooks (PocketBase JSVM): AI proxy, rooms
                         sweeper, stats, permalinks, app-hook loader
 pb_hooks/mcp.pb.js      MCP endpoints for agent sessions (platform explorer
                         + per-app tool modules), bearer tokens from env
+pb_hooks/content.pb.js  public markdown snapshots of app pages for agents
+                        that cannot run JS (/_cubby/content/<app>)
 pb_hooks/apps/<app>/    app-owned server hooks, loaded by the platform shim
-                        (plus mcp.js, the app's MCP tools, when declared)
+                        (plus mcp.js and content.js when the app has them)
 pb_migrations/          platform + app collections
 scripts/                dev server, scaffolder, manifest, smoke test
 skills/                 agent skills (init, deploy, new-app, update)

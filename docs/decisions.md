@@ -442,3 +442,35 @@ endpoint on and names it. That keeps the app-hook carve-out intact: the
 module is app-owned and ships in the app's PR, the route and the protocol
 are platform and never edited per app, and the build refuses an app that
 enables mcp without its module rather than shipping an endpoint that 500s.
+
+## Agent-readable content is a public endpoint, not only an MCP tool
+
+Most app content is rendered by JavaScript, so the agents that matter most,
+any session with curl or WebFetch, read an empty shell. The platform MCP
+could already reach the data, but it sits behind an operator token and
+needs client wiring. That is right for operators, and useless for an agent
+that just found a link. So the snapshot renderer
+(`pb_hooks/lib/content.js`) is shared by two doors: a public
+`GET /_cubby/content/<app>` that anyone can fetch, and the MCP `read_app`
+tool for sessions already wired in.
+
+Public is safe because of what a snapshot can contain. The static half is
+the app's own committed index.html, which is already public. The live half
+comes from the app's `content.js`, and its only data access is
+`publicRecords`, which refuses any collection without an empty `listRule`.
+That means a snapshot is bounded by what an anonymous browser could fetch
+from the REST API anyway. The bound comes from the platform, not from each
+author's discipline.
+
+Rendering is a deliberate approximation: a forgiving HTML-to-markdown pass
+over the static page plus app-supplied sections targeted at element ids.
+It is not a headless browser. PocketHost runs no browser, and the JSVM has
+no DOM. An app gets fidelity in proportion to the hook it writes, and an app
+with no hook still gets its headings, prose and links.
+
+Identity gating reuses the shape of `ai.allowedUsers` (`"access":
+{ "allowedUsers": [...] }`), so the block can later drive per-user checks.
+For now its presence alone withholds everything, because the public
+endpoint has no caller identity to match against. It fails closed: a
+malformed block counts as gated on the server and fails the build.
+

@@ -22,6 +22,9 @@ skills/init/SKILL.md (/cubby:init); to stand up or operate a
 deployment, follow skills/deploy/SKILL.md; to pull upstream platform
 updates into a deployment, follow skills/update/SKILL.md
 (/cubby:update). The skills are the source of agent truth;
-docs/ explains the architecture for humans. Verify work with `npm run dev`
-plus scripts/smoke.mjs, and keep committed artifacts fresh with `npm run
+docs/ explains the architecture for humans. Pages render client-side, so
+agents read an app through GET /_cubby/content/<app> (a markdown
+snapshot; apps fill live parts via pb_hooks/apps/<name>/content.js, and a
+cubby.json "access" block withholds it) or the platform MCP's read_app.
+Verify work with `npm run dev` plus scripts/smoke.mjs, and keep committed artifacts fresh with `npm run
 build` before pushing (CI fails on drift).
