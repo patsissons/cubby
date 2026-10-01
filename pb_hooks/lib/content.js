@@ -1,7 +1,7 @@
 // Agent-readable page content: a markdown snapshot of what an app's page
 // shows, for agents that fetch with curl and cannot run JavaScript. Served
-// publicly at GET /_cubby/content[/<app>] (pb_hooks/content.pb.js) and to
-// operators through the platform MCP tool read_app.
+// publicly at GET /_cubby/content[/<app>[/<route>]] (pb_hooks/content.pb.js)
+// and to operators through the platform MCP tool read_app.
 //
 // A snapshot has two layers. The first is the app's static index.html
 // converted to markdown, with scripts, hidden elements and form controls
@@ -10,12 +10,19 @@
 // containers its JavaScript would fill in a browser. An app whose cubby.json
 // declares an "access" block sits behind identity, and it gets nothing here.
 //
+// A route is whatever follows /<app>/ in a page URL, usually a hash route
+// (/recipes/#/r/x is /_cubby/content/recipes/r/x). The server never sees
+// a fragment, so the agent spells the route as a path. Only an app whose
+// content.js exports route(ctx) answers routes. Every other route is an
+// explicit 404, never the shell dressed up as success.
+//
 // The core (htmlToMarkdown, renderAppContent, renderRootContent) is pure, so
 // scripts/content-tests.mjs runs it under Node. Everything after the JSVM
 // marker runs in the PocketBase JSVM (goja): it is synchronous, CommonJS, and
 // has no Node APIs.
 
 const MAX_TEXT = 200000
+const MAX_ROUTE = 500
 const SLUG_RE = /^[a-z0-9-]{1,100}$/
 
 // --- HTML -> markdown (pure) ---
@@ -144,14 +151,21 @@ function isHidden(node) {
   return 'hidden' in a || a['aria-hidden'] === 'true' || /(?:^|;)\s*display\s*:\s*none/i.test(a.style || '')
 }
 
-function resolveHref(href, base) {
+/**
+ * Make a link absolute against base. With routeHref, links to the app's
+ * own hash routes (#/x, or /<app>/#/x spelled out) become route snapshot
+ * links. Without it they become plain text, because a fragment is
+ * meaningless to an agent.
+ */
+function resolveHref(href, base, routeHref) {
   const value = String(href || '').trim()
+  if (routeHref && value.startsWith('#/')) return routeHref(value.slice(1))
   if (!value || value[0] === '#' || /^javascript:/i.test(value)) return ''
   if (/^[a-z][a-z0-9+.-]*:/i.test(value) || value.startsWith('//')) return value
   const origin = (/^[a-z]+:\/\/[^/]+/i.exec(base) || [''])[0]
-  if (value[0] === '/') return origin + value
-  const dir = base.endsWith('/') ? base : base.replace(/[^/]*$/, '')
-  return dir + value.replace(/^\.\//, '')
+  const abs = value[0] === '/' ? origin + value : (base.endsWith('/') ? base : base.replace(/[^/]*$/, '')) + value.replace(/^\.\//, '')
+  if (routeHref && abs.startsWith(`${base}#/`)) return routeHref(abs.slice(base.length + 1))
+  return abs
 }
 
 const squash = (text) => text.replace(/\s+/g, ' ').trim()
@@ -159,15 +173,17 @@ const squash = (text) => text.replace(/\s+/g, ' ').trim()
 /**
  * Convert an HTML document (or fragment) to markdown.
  * @param {string} html
- * @param {{ base?: string, fills?: Record<string, string> }} [opts]
+ * @param {{ base?: string, fills?: Record<string, string>, routeHref?: (route: string) => string }} [opts]
  *   base: the URL that relative links resolve against
  *   fills: element id -> markdown that replaces that element's contents
  *   (how an app's content.js fills the containers its JS would fill)
+ *   routeHref: maps a hash route ("/r/x") to its snapshot URL
  * @returns {{ markdown: string, filled: string[] }} filled lists the ids it found
  */
 function htmlToMarkdown(html, opts) {
   const base = (opts && opts.base) || ''
   const fills = (opts && opts.fills) || {}
+  const routeHref = opts && opts.routeHref
   const raws = []
   const raw = (markdown) => {
     raws.push(markdown)
@@ -288,7 +304,7 @@ function htmlToMarkdown(html, opts) {
       }
       case 'a': {
         const text = squash(children(node))
-        const href = resolveHref(node.attrs.href, base)
+        const href = resolveHref(node.attrs.href, base, routeHref)
         if (!text) return ''
         return href ? `[${text}](${href})` : text
       }
@@ -336,17 +352,20 @@ function cap(markdown) {
  * page by target id or appended under their own heading, and a header that
  * says what this is.
  * @param {{ slug: string, manifest: object, html: string, origin?: string,
- *   sections?: Array<{ title?: string, markdown: string, target?: string }> }} input
+ *   sections?: Array<{ title?: string, markdown: string, target?: string }>,
+ *   routes?: boolean }} input  routes: the app answers per-route snapshots,
+ *   so its own hash links point at them
  */
 function renderAppContent(input) {
-  const { slug, manifest = {}, html = '', origin = '', sections = [] } = input
+  const { slug, manifest = {}, html = '', origin = '', sections = [], routes = false } = input
   const url = `${origin}/${slug}/`
   const title = String(manifest.title || slug)
   const fills = {}
   for (const section of sections) {
     if (section.target) fills[section.target] = section.markdown
   }
-  const { markdown, filled } = htmlToMarkdown(html, { base: url, fills })
+  const routeHref = routes ? (route) => contentUrl(origin, slug, route) : undefined
+  const { markdown, filled } = htmlToMarkdown(html, { base: url, fills, routeHref })
 
   // The snapshot opens with the page's own h1 when it has one, so the
   // header lines sit right under the title the app chose.
@@ -375,6 +394,63 @@ function renderAppContent(input) {
     parts.push(section.title ? `## ${squash(String(section.title))}\n\n${text}` : text)
   }
   return cap(parts.join('\n\n') + '\n')
+}
+
+/**
+ * Normalize the part of a page URL after /<app>/ into a route: "#/r/x",
+ * "r/x/" and "/r/x" all become "/r/x". The root is "". Returns null for
+ * a route nobody should be asking for.
+ * @param {string} raw
+ * @returns {string|null}
+ */
+function normalizeRoute(raw) {
+  const value = String(raw || '')
+  if (value.length > MAX_ROUTE || /[\u0000-\u001f\u007f]/.test(value)) return null
+  const trimmed = value.replace(/^[#/]+/, '').replace(/\/+$/, '')
+  return trimmed ? `/${trimmed}` : ''
+}
+
+/** Absolute URL of a snapshot: the app's, or one of its routes. */
+function contentUrl(origin, slug, route) {
+  const normalized = normalizeRoute(route) || ''
+  return `${origin}/_cubby/content/${slug}${normalized.split('/').map(encodeURIComponent).join('/')}`
+}
+
+/**
+ * One route's snapshot: what the app's route(ctx) returned, under a header
+ * that ties it back to the page and the app snapshot. There is no static
+ * shell: the page around a deep link is the same for every route.
+ * @param {{ slug: string, manifest: object, origin?: string, route: string,
+ *   result: { title?: string, markdown: string, pageUrl?: string } }} input
+ */
+function renderRouteContent(input) {
+  const { slug, manifest = {}, origin = '', route, result } = input
+  const appTitle = String(manifest.title || slug)
+  const title = squash(String(result.title || '')) || `${appTitle} ${route}`
+  const parts = [`# ${title}`]
+  const desc = manifest.description ? `: ${squash(String(manifest.description))}` : ''
+  parts.push(`> ${appTitle}${desc}`)
+  parts.push(
+    [
+      `- Page: ${result.pageUrl || `${origin}/${slug}/#${route}`}`,
+      `- App snapshot: ${contentUrl(origin, slug, '')}`,
+      '- This is a server-rendered text snapshot of one view of an app that renders in the browser.',
+    ].join('\n')
+  )
+  const body = String(result.markdown || '').trim()
+  if (body) parts.push(body)
+  return cap(parts.join('\n\n') + '\n')
+}
+
+/** What route(ctx) returned: null (no such route) or { markdown, title?, pageUrl? }. */
+function validateRouteResult(result) {
+  if (result === null || result === undefined) return []
+  if (typeof result !== 'object' || Array.isArray(result)) return ['route() must return an object or null']
+  const problems = []
+  if (typeof result.markdown !== 'string') problems.push('markdown must be a string')
+  if (result.title !== undefined && typeof result.title !== 'string') problems.push('title must be a string')
+  if (result.pageUrl !== undefined && typeof result.pageUrl !== 'string') problems.push('pageUrl must be a string')
+  return problems
 }
 
 /**
@@ -477,41 +553,56 @@ function publicRecords(app, name, opts) {
   return out
 }
 
-/** Run an app's optional content.js. A broken hook costs its sections, never the page. */
-function loadSections(app, slug, manifest) {
+/** require() an app's optional content.js; null when it has none. Throws when it is broken. */
+function loadContentModule(slug) {
   const file = `${__hooks}/apps/${slug}/content.js`
   try {
     $os.stat(file)
   } catch (err) {
-    return []
+    return null
   }
-  const log = (msg) => console.log(`[content:${slug}] ${msg}`)
+  const module = require(file)
+  if (!module || (typeof module.sections !== 'function' && typeof module.route !== 'function')) {
+    throw new Error('content.js must export sections(ctx) and/or route(ctx)')
+  }
+  return module
+}
+
+function hookCtx(app, slug, manifest, origin, route) {
+  return {
+    app,
+    slug,
+    manifest,
+    route,
+    origin,
+    log: (msg) => console.log(`[content:${slug}] ${msg}`),
+    publicRecords: (name, opts) => publicRecords(app, name, opts),
+    contentUrl: (r) => contentUrl(origin, slug, r),
+  }
+}
+
+/** Run sections(ctx). A broken hook costs its sections, never the page. */
+function loadSections(module, ctx) {
+  if (!module || typeof module.sections !== 'function') return []
   try {
-    const module = require(file)
-    if (!module || typeof module.sections !== 'function') throw new Error('must export sections(ctx)')
-    const ctx = {
-      app,
-      slug,
-      manifest,
-      log,
-      publicRecords: (name, opts) => publicRecords(app, name, opts),
-    }
     const sections = module.sections(ctx)
     const problems = validateSections(sections)
     if (problems.length) throw new Error(problems.join('; '))
     return sections
   } catch (err) {
-    log(`sections failed: ${err && err.message ? err.message : err}`)
+    ctx.log(`sections failed: ${err && err.message ? err.message : err}`)
     return []
   }
 }
 
 /**
- * The snapshot for one app (slug) or the root (''). This is shared by the
- * public endpoint and the MCP read_app tool.
+ * The snapshot for the root (''), an app, or one of the app's routes. This
+ * is shared by the public endpoint and the MCP read_app tool. A route that
+ * the app does not answer is a 404, never the page shell.
+ * @param {string} [rawRoute] what followed /<app>/ in the page URL
  * @returns {{ status: number, markdown?: string, code?: string, message?: string }}
  */
-function renderContent(app, slug) {
+function renderContent(app, slug, rawRoute) {
   const { loadCubbyConfig, parseAccess } = require(`${__hooks}/lib/config.js`)
   const publicDir = `${__hooks}/../pb_public`
   let config = {}
@@ -539,16 +630,46 @@ function renderContent(app, slug) {
       message: `app "${slug}" requires sign-in; its content is not available to agents`,
     }
   }
-  const html = readText(`${publicDir}/${slug}/index.html`)
-  const sections = loadSections(app, slug, manifest)
-  return { status: 200, markdown: renderAppContent({ slug, manifest, html, origin, sections }) }
+  const route = normalizeRoute(rawRoute)
+  if (route === null) return { status: 400, code: 'bad_request', message: 'invalid route' }
+  const log = (msg) => console.log(`[content:${slug}] ${msg}`)
+  let module = null
+  try {
+    module = loadContentModule(slug)
+  } catch (err) {
+    log(`content.js failed to load: ${err && err.message ? err.message : err}`)
+    if (route) return { status: 500, code: 'content_hook_failed', message: `app "${slug}" content hook failed` }
+  }
+  const routes = !!(module && typeof module.route === 'function')
+  const ctx = hookCtx(app, slug, manifest, origin, route)
+
+  if (!route) {
+    const html = readText(`${publicDir}/${slug}/index.html`)
+    const sections = loadSections(module, ctx)
+    return { status: 200, markdown: renderAppContent({ slug, manifest, html, origin, sections, routes }) }
+  }
+
+  const notFound = { status: 404, code: 'route_not_found', message: `app "${slug}" has no content for route "${route}"` }
+  if (!routes) return notFound
+  let result
+  try {
+    result = module.route(ctx)
+    const problems = validateRouteResult(result)
+    if (problems.length) throw new Error(problems.join('; '))
+  } catch (err) {
+    log(`route ${route} failed: ${err && err.message ? err.message : err}`)
+    return { status: 500, code: 'content_hook_failed', message: `app "${slug}" content hook failed for route "${route}"` }
+  }
+  if (result === null || result === undefined) return notFound
+  return { status: 200, markdown: renderRouteContent({ slug, manifest, origin, route, result }) }
 }
 
-/** GET /_cubby/content[/{app}]. */
-function serve(e, slug) {
+/** GET /_cubby/content[/{app}[/{route...}]]. */
+function serve(e, slug, route) {
   const started = Date.now()
-  const out = renderContent(e.app, slug)
-  console.log(`[content] /${slug || ''} ${Date.now() - started}ms ${out.code ? `err:${out.code}` : 'ok'}`)
+  const out = renderContent(e.app, slug, route)
+  const shown = route ? `/${encodeURI(String(route)).slice(0, 200)}` : ''
+  console.log(`[content] /${slug || ''}${shown} ${Date.now() - started}ms ${out.code ? `err:${out.code}` : 'ok'}`)
   if (out.code) {
     e.response.header().set('Cache-Control', 'no-store')
     return e.json(out.status, { code: out.code, message: out.message })
@@ -563,8 +684,13 @@ module.exports = {
   htmlToMarkdown,
   renderAppContent,
   renderRootContent,
+  renderRouteContent,
+  normalizeRoute,
+  contentUrl,
   validateSections,
+  validateRouteResult,
   publicRecords,
+  loadContentModule,
   loadSections,
   renderContent,
   serve,
