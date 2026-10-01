@@ -26,7 +26,8 @@ const mcp = {
     '{:name} placeholder and pass the values in params (e.g. filter "user = {:u}", ' +
     'params { "u": "abc123" }). read_app returns the markdown snapshot of what an app\'s ' +
     'page shows (pages render in the browser, so their HTML is mostly a shell); the same ' +
-    'text is public at GET /_cubby/content/<app>. Apps whose manifest declares "access" ' +
+    'text is public at GET /_cubby/content/<app>, and one view of a deep link ' +
+    '/<app>/#/<route> at /_cubby/content/<app>/<route> (read_app route). Apps whose manifest declares "access" ' +
     'sit behind identity and have no snapshot. Apps that expose their own tools are ' +
     'served at /_cubby/mcp/<app> with that app\'s token.',
 }
@@ -59,11 +60,16 @@ const tools = [
     description:
       'Read what an app\'s page shows, as markdown: its static HTML converted to text plus the live sections its ' +
       'content hook fills in (the page itself renders in the browser). The same text is public at ' +
-      'GET /_cubby/content/<app>. Fails with identity_required for apps behind identity (manifest "access").',
+      'GET /_cubby/content/<app>. Pass route to read one view: the deep link /<app>/#/r/x is route "/r/x" ' +
+      '(route_not_found when the app has no content for it). Fails with identity_required for apps behind ' +
+      'identity (manifest "access").',
     inputSchema: {
       type: 'object',
       required: ['app'],
-      properties: { app: { type: 'string', pattern: '^[a-z0-9-]{1,100}$', description: 'app slug (directory name)' } },
+      properties: {
+        app: { type: 'string', pattern: '^[a-z0-9-]{1,100}$', description: 'app slug (directory name)' },
+        route: { type: 'string', maxLength: 500, description: 'what follows /<app>/ in the page URL, e.g. "#/r/x" or "/r/x"' },
+      },
       additionalProperties: false,
     },
     annotations: readOnly,
@@ -324,8 +330,8 @@ function getRecord(app, args) {
   return { collection: collection.name, record: record.publicExport() }
 }
 
-function readApp(app, slug) {
-  const out = require(`${__hooks}/lib/content.js`).renderContent(app, slug)
+function readApp(app, slug, route) {
+  const out = require(`${__hooks}/lib/content.js`).renderContent(app, slug, route)
   if (out.code === 'bad_request') throw invalid(out.message)
   if (out.code) throw new Error(`${out.code}: ${out.message}`)
   return out.markdown
@@ -338,7 +344,7 @@ function call(name, args, ctx) {
     case 'describe_app':
       return describeApp(ctx.app, args.app)
     case 'read_app':
-      return readApp(ctx.app, args.app)
+      return readApp(ctx.app, args.app, typeof args.route === 'string' ? args.route : '')
     case 'list_collections':
       return listCollections(ctx.app, typeof args.prefix === 'string' ? args.prefix : '')
     case 'query_records':

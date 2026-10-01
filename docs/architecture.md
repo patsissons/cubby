@@ -845,9 +845,17 @@ instead, publicly and with no setup:
   `aria-hidden="true"` or `display: none` are dropped. Headings, lists,
   links (made absolute), code blocks and tables survive. The app's optional
   content hook then fills in the live parts.
+- `GET /_cubby/content/<app>/<route>` is one view of the app. A route is
+  whatever follows `/<app>/` in the page URL. The deep link
+  `/recipes/#/r/falernum` is `/_cubby/content/recipes/r/falernum`, because the
+  fragment never reaches a server, so the agent spells it as a path. A
+  leading `#` (or `%23`) is accepted and stripped. Only an app whose hook
+  exports `route(ctx)` answers routes. Any other route is
+  `404 route_not_found` as JSON, never the page shell with a 200.
 - Responses are `text/markdown; charset=utf-8` with a 60s public cache.
-  Errors are JSON `{ code, message }`: 400 `bad_request`, 404 `not_found`,
-  or 403 `identity_required`. Snapshots are capped at 200k chars.
+  Errors are JSON `{ code, message }`: 400 `bad_request`, 404 `not_found` or
+  `route_not_found`, 403 `identity_required`, or 500 `content_hook_failed`
+  (a route hook threw). Snapshots are capped at 200k chars.
 
 **The content hook**, `pb_hooks/apps/<app>/content.js`, is optional. Like
 `mcp.js` it is required per request and is not a `.pb.js` file:
@@ -855,22 +863,47 @@ instead, publicly and with no setup:
 ```js
 module.exports = {
   sections(ctx) {
-    const rows = ctx.publicRecords('my_app_items', { sort: '-created', limit: 20 })
-    return [{ target: 'item-list', markdown: rows.map((r) => `- ${r.title}`).join('\n') }]
+    const rows = ctx.publicRecords('recipes_items', { sort: 'title', limit: 200 })
+    const list = rows.map((r) => `- [${r.title}](${ctx.contentUrl(`/r/${r.slug}`)})`).join('\n')
+    return [{ target: 'recipe-list', markdown: list }]
+  },
+  route(ctx) {
+    const m = /^\/r\/([a-z0-9-]+)$/.exec(ctx.route)
+    if (!m) return null // 404 route_not_found
+    const [r] = ctx.publicRecords('recipes_items', { filter: 'slug = {:s}', params: { s: m[1] }, limit: 1 })
+    return r ? { title: r.title, markdown: r.body } : null
   },
 }
 ```
 
-A section with `target` replaces the contents of the element with that id,
-the container `app.js` fills in a browser. A section without a target, or
-whose target is missing, is appended under `## <title>`. `ctx` is
-`{ app, slug, manifest, log, publicRecords }`. `publicRecords(collection,
+A module exports `sections`, `route`, or both.
+
+**`sections(ctx)` builds the app snapshot.** A section with `target`
+replaces the contents of the element with that id, the container `app.js`
+fills in a browser. A section without a target, or whose target is missing,
+is appended under `## <title>`. A sections hook that throws or returns a bad
+shape is logged and loses its sections, and the static page is still
+served.
+
+**`route(ctx)` builds one view.** It returns `{ title, markdown, pageUrl? }`,
+or `null` when the route doesn't exist. `ctx.route` is normalized (`"/r/x"`,
+no trailing slash). `pageUrl` overrides the default `/<app>/#<route>`, for
+example where hello's views are real permalink paths. A route hook that
+throws answers 500. A route snapshot has no static shell: its header names
+the page and links back to the app snapshot. When a module exports `route`,
+the static snapshot's own `#/...` links (and `/<app>/#/...`) become links to
+the matching route snapshots.
+
+`ctx` is `{ app, slug, manifest, route, origin, log, contentUrl,
+publicRecords }`. `contentUrl(route)` is the absolute snapshot URL for a
+route, so the app snapshot can link every item to its view.
+`publicRecords(collection,
 { filter, params, sort, limit })` is the only data access a hook gets: it
 refuses any collection whose `listRule` is not `""`, and returns
 `publicExport()` rows, so a snapshot never shows more than an anonymous
-browser could already fetch. A hook that throws or returns a bad shape is
-logged and loses its sections, and the static page is still served.
-`pb_hooks/apps/hello/content.js` is the reference.
+browser could already fetch. `pb_hooks/apps/hello/content.js` is the
+reference: guestbook entries in the app snapshot, and one entry per route
+(`/_cubby/content/hello/<id>`, mirroring its `/hello/<id>` permalinks).
 
 **Identity-gated apps** declare an `access` block in `cubby.json`:
 
@@ -880,18 +913,28 @@ logged and loses its sections, and the static page is still served.
 
 `allowedUsers` takes email globs. `[]` (or no key) means any signed-in user,
 the same meaning as in `ai.allowedUsers`. If the block is present at all, the
-content endpoint answers `403 identity_required` with no content. `read_app`
+content endpoint answers `403 identity_required` with no content, on every
+route. `read_app`
 fails the same way. The root snapshot and the app's `llms.txt` say "sign-in
 required", and the build drops the page's content link. The server fails
 closed on a malformed block, and the build rejects one naming the app.
 The block does not gate the static page itself: the browser app still checks
 `cubby.identity` for anything it shows.
 
-**Discovery.** The build gives every open app's `<head>`, and the root
-page's, one `<link rel="alternate" type="text/markdown"
-href="/_cubby/content/<app>" data-cubby-content />`. An agent that curls a
-shell therefore sees where the readable version lives. The `llms.txt` files
-link it too (see below), and so do the platform MCP `instructions`.
+**Discovery.** An agent may hold nothing but a page URL, so the build puts
+two pointers into every open app page and the root page, both tagged
+`data-cubby-content` and rewritten on every build:
+
+- **`<link rel="alternate" type="text/markdown" href="/_cubby/content/<app>">`**
+  before `</head>`, for clients that read link relations.
+- **A `<noscript>` paragraph** right after `<body>`, naming the snapshot URL
+  and the deep-link rule. Tools that turn HTML into text usually drop
+  `<head>`, but they run no JS and so keep noscript content. Browsers hide it.
+  The snapshot converter drops noscript, so the hint never appears inside a
+  snapshot.
+
+The `llms.txt` files (see below) and the platform MCP `instructions` state
+the same rule. `read_app` takes an optional `route`.
 
 ## Rooms: cubby.rooms
 
@@ -968,11 +1011,12 @@ discovery site, all from the same source of truth (`cubby.json` files plus
   without the `data-cubby-jsonld` attribute is never touched. Like the og
   rewrite, this pass is skipped entirely when no domain is configured:
   structured data with relative URLs helps nobody.
-- **Content links**: every app page (and the root) gets one
-  `<link rel="alternate" type="text/markdown" ... data-cubby-content />`
-  pointing at its `/_cubby/content` snapshot. Each per-app llms.txt links the
-  snapshot, and the root llms.txt describes the endpoint and the platform
-  MCP. Apps with an `access` block get the "sign-in required" line instead
+- **Content pointers**: every app page (and the root) gets a
+  `<link rel="alternate" type="text/markdown" ... data-cubby-content />` and a
+  `<noscript data-cubby-content>` hint pointing at its `/_cubby/content`
+  snapshot. Each per-app llms.txt links the snapshot and states the
+  deep-link rule, and the root llms.txt describes the endpoint, its routes
+  and the platform MCP. Apps with an `access` block get the "sign-in required" line instead
   of a link (see "Agent-readable content").
 
 Hidden apps (underscore prefix or `"hidden": true`) appear in neither, and

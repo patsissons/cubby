@@ -194,35 +194,51 @@ const gated = new Set()
 }
 
 // Agent-readable content: pages render in the browser, so an agent that
-// curls one gets an empty shell. Each open app's <head> carries one
-// build-owned <link rel="alternate" type="text/markdown"> tag, tagged
-// data-cubby-content, pointing at its server-rendered snapshot
-// (pb_hooks/content.pb.js). The tag is replaced in place, or appended before
-// </head> when absent. Apps behind identity lose the tag. Relative hrefs, so
-// this runs without a domain.
+// curls one gets an empty shell. Every open page carries two build-owned
+// pointers at its server-rendered snapshot (pb_hooks/content.pb.js), both
+// tagged data-cubby-content:
+//   - <link rel="alternate" type="text/markdown"> before </head>, for
+//     clients that read link relations;
+//   - <noscript> right after <body>, for fetchers that turn HTML into text
+//     and drop <head>. Fetchers run no JS, so they treat noscript as
+//     content, and browsers hide it. It also spells out the deep-link rule
+//     (/<app>/#/<route> -> /_cubby/content/<app>/<route>), since a fragment
+//     never reaches the server.
+// Both are stripped and re-inserted every run, so they stay byte-stable and
+// disappear from apps behind identity. Relative hrefs, so this runs without
+// a domain. The snapshot converter drops noscript, so the hint never shows
+// up inside a snapshot.
 {
-  const tagRe = /\n?[ \t]*<link rel="alternate" type="text\/markdown" href="[^"]*" data-cubby-content \/>/
-  const hrefRe = /(<link rel="alternate" type="text\/markdown" href=")[^"]*(" data-cubby-content \/>)/
-  const apply = (page, href) => {
+  const linkRe = /\n?[ \t]*<link rel="alternate" type="text\/markdown" href="[^"]*" data-cubby-content \/>/g
+  const noscriptRe = /\n?[ \t]*<noscript data-cubby-content>[\s\S]*?<\/noscript>/g
+  /** slug: an app, '' for the root page, null to strip (gated) */
+  const apply = (page, slug) => {
     const html = readFileSync(page, 'utf8')
-    let updated
-    if (!href) updated = html.replace(tagRe, '')
-    else if (hrefRe.test(html)) updated = html.replace(hrefRe, `$1${href}$2`)
-    else {
-      const tag = `<link rel="alternate" type="text/markdown" href="${href}" data-cubby-content />`
-      updated = html.replace(/\n?( *)<\/head>/, `\n$1  ${tag}\n$1</head>`)
+    let updated = html.replace(linkRe, '').replace(noscriptRe, '')
+    if (slug !== null) {
+      const href = slug ? `/_cubby/content/${slug}` : '/_cubby/content'
+      const link = `<link rel="alternate" type="text/markdown" href="${href}" data-cubby-content />`
+      const hint = slug
+        ? `This page renders with JavaScript. Read it as markdown at <a href="${href}">${href}</a>. ` +
+          `For a deep link /${slug}/#/&lt;route&gt;, fetch ${href}/&lt;route&gt;.`
+        : `This page renders with JavaScript. Read the app list as markdown at <a href="${href}">${href}</a>. ` +
+          `Any app reads the same way at /_cubby/content/&lt;app&gt;, and its deep link ` +
+          `/&lt;app&gt;/#/&lt;route&gt; at /_cubby/content/&lt;app&gt;/&lt;route&gt;.`
+      updated = updated
+        .replace(/\n?( *)<\/head>/, `\n$1  ${link}\n$1</head>`)
+        .replace(/( *)(<body\b[^>]*>)/, `$1$2\n$1  <noscript data-cubby-content><p>${hint}</p></noscript>`)
     }
     if (updated === html) return false
     writeFileSync(page, updated)
     return true
   }
   let linked = 0
-  if (apply(path.join(publicDir, 'index.html'), '/_cubby/content')) linked++
+  if (apply(path.join(publicDir, 'index.html'), '')) linked++
   for (const entry of readdirSync(publicDir, { withFileTypes: true })) {
     if (!entry.isDirectory() || !/^[a-z0-9-]+$/.test(entry.name)) continue
     const page = path.join(publicDir, entry.name, 'index.html')
     if (!existsSync(page) || !existsSync(path.join(publicDir, entry.name, 'cubby.json'))) continue
-    if (apply(page, gated.has(entry.name) ? '' : `/_cubby/content/${entry.name}`)) linked++
+    if (apply(page, gated.has(entry.name) ? null : entry.name)) linked++
   }
   if (linked) console.log(`updated content links in ${linked} page(s)`)
 }
@@ -355,7 +371,8 @@ if (origin) {
     )
     if (!isGated) {
       lines.push(
-        `- [Page content as markdown](${base}/_cubby/content/${site.name}): what the page renders, for agents that cannot run JavaScript`
+        `- [Page content as markdown](${base}/_cubby/content/${site.name}): what the page renders, for agents that cannot run JavaScript`,
+        `- Deep links: for a page URL ${base}/${site.name}/#/<route>, fetch ${base}/_cubby/content/${site.name}/<route> (404 route_not_found when the app has no content for that view)`
       )
     }
     lines.push(`- [All apps on this instance](${base}/llms.txt): the site-wide index`)
@@ -379,6 +396,9 @@ if (origin) {
     'Pages render in the browser, so fetching an app\'s HTML returns little more',
     `than its shell. Fetch ${base}/_cubby/content/<app> instead for a markdown`,
     'snapshot of what the page shows (apps that require sign-in return 403).',
+    'A deep link /<app>/#/<route> is one view of an app: the fragment never',
+    `reaches a server, so fetch ${base}/_cubby/content/<app>/<route> instead`,
+    '(404 route_not_found when the app has no content for that view).',
     '',
     '## Apps',
     '',

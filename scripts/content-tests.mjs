@@ -137,6 +137,69 @@ await test('parseAccess: absent or null is open; any block is gated, failing clo
   assert.deepEqual(parseAccess({ access: true }), { allowedUsers: [] })
 })
 
+await test('normalizeRoute: hash, slashes and junk', () => {
+  assert.equal(lib.normalizeRoute('#/r/falernum-ryan'), '/r/falernum-ryan')
+  assert.equal(lib.normalizeRoute('r/falernum-ryan/'), '/r/falernum-ryan')
+  assert.equal(lib.normalizeRoute('/r/x'), '/r/x')
+  assert.equal(lib.normalizeRoute(''), '')
+  assert.equal(lib.normalizeRoute('#/'), '')
+  assert.equal(lib.normalizeRoute(undefined), '')
+  assert.equal(lib.normalizeRoute('a\nb'), null)
+  assert.equal(lib.normalizeRoute('x'.repeat(501)), null)
+})
+
+await test('contentUrl builds absolute snapshot URLs with encoded segments', () => {
+  assert.equal(lib.contentUrl('https://c.io', 'recipes', '#/r/x'), 'https://c.io/_cubby/content/recipes/r/x')
+  assert.equal(lib.contentUrl('https://c.io', 'recipes', ''), 'https://c.io/_cubby/content/recipes')
+  assert.equal(lib.contentUrl('', 'recipes', '/tag/a b'), '/_cubby/content/recipes/tag/a%20b')
+})
+
+await test('hash links map to route snapshots only when the app answers routes', () => {
+  const html = '<p><a href="#/r/x">rel</a> <a href="/recipes/#/r/y">abs</a> <a href="#top">frag</a></p>'
+  const base = 'https://c.io/recipes/'
+  assert.equal(lib.htmlToMarkdown(html, { base }).markdown, 'rel [abs](https://c.io/recipes/#/r/y) frag')
+  const routeHref = (route) => lib.contentUrl('https://c.io', 'recipes', route)
+  assert.equal(
+    lib.htmlToMarkdown(html, { base, routeHref }).markdown,
+    '[rel](https://c.io/_cubby/content/recipes/r/x) [abs](https://c.io/_cubby/content/recipes/r/y) frag'
+  )
+  const app = lib.renderAppContent({ slug: 'recipes', origin: 'https://c.io', manifest: {}, html, routes: true })
+  assert.ok(app.includes('[rel](https://c.io/_cubby/content/recipes/r/x)'), app)
+})
+
+await test('renderRouteContent: one view under a header tying it to page and app', () => {
+  const out = lib.renderRouteContent({
+    slug: 'recipes',
+    origin: 'https://c.io',
+    manifest: { title: 'Recipes', description: 'The family recipe box.' },
+    route: '/r/falernum',
+    result: { title: 'Falernum', markdown: '## Ingredients\n\n- lime' },
+  })
+  assert.equal(
+    out,
+    '# Falernum\n\n> Recipes: The family recipe box.\n\n' +
+      '- Page: https://c.io/recipes/#/r/falernum\n- App snapshot: https://c.io/_cubby/content/recipes\n' +
+      '- This is a server-rendered text snapshot of one view of an app that renders in the browser.\n\n' +
+      '## Ingredients\n\n- lime\n'
+  )
+  const custom = lib.renderRouteContent({ slug: 'hello', manifest: {}, route: '/abc', result: { markdown: 'x', pageUrl: '/hello/abc' } })
+  assert.ok(custom.startsWith('# hello /abc\n'))
+  assert.ok(custom.includes('- Page: /hello/abc\n'))
+})
+
+await test('validateRouteResult: null is a miss, objects need markdown', () => {
+  assert.deepEqual(lib.validateRouteResult(null), [])
+  assert.deepEqual(lib.validateRouteResult({ markdown: 'x', title: 't', pageUrl: '/p' }), [])
+  assert.equal(lib.validateRouteResult('x').length, 1)
+  assert.equal(lib.validateRouteResult({ title: 1 }).length, 2)
+})
+
+await test('the build-owned noscript hint never lands inside a snapshot', () => {
+  const html = readFileSync(new URL('../pb_public/hello/index.html', import.meta.url), 'utf8')
+  assert.ok(html.includes('<noscript data-cubby-content>'), 'the build injected the hint')
+  assert.ok(!md(html).includes('renders with JavaScript'))
+})
+
 await test('the real hello page converts with its sections and no markup', () => {
   const html = readFileSync(new URL('../pb_public/hello/index.html', import.meta.url), 'utf8')
   const manifest = JSON.parse(readFileSync(new URL('../pb_public/hello/cubby.json', import.meta.url), 'utf8'))

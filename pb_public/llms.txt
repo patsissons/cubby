@@ -8,6 +8,9 @@ Every app is a single page with hash routing: deep links look like
 Pages render in the browser, so fetching an app's HTML returns little more
 than its shell. Fetch https://cubby.pockethost.io/_cubby/content/<app> instead for a markdown
 snapshot of what the page shows (apps that require sign-in return 403).
+A deep link /<app>/#/<route> is one view of an app: the fragment never
+reaches a server, so fetch https://cubby.pockethost.io/_cubby/content/<app>/<route> instead
+(404 route_not_found when the app has no content for that view).
 
 ## Apps
 

@@ -511,8 +511,9 @@ read-only explorer lives at `POST /_cubby/mcp` behind `CUBBY_MCP_TOKEN`;
 Agents that fetch pages with curl or WebFetch can't run `app.js`, so the
 platform serves `GET /_cubby/content/<name>`: your `index.html` as markdown.
 Scripts, form controls and hidden elements are dropped. The build advertises
-it in your page's `<head>` and in your `llms.txt`. You get it for free, so
-write real headings and prose in `index.html`, and every agent sees them.
+it in your page (a `<head>` link plus a `<noscript>` hint) and in your
+`llms.txt`. You get it for free, so write real headings and prose in
+`index.html`, and every agent sees them.
 
 **If the page fills containers from data**, ship
 `pb_hooks/apps/<name>/content.js` so the snapshot shows that data too:
@@ -520,11 +521,11 @@ write real headings and prose in `index.html`, and every agent sees them.
 ```js
 // pb_hooks/apps/my-app/content.js (require-only, like mcp.js)
 function sections(ctx) {
-  // ctx = { app, slug, manifest, log, publicRecords }
+  // ctx = { app, slug, manifest, route, origin, log, contentUrl, publicRecords }
   const rows = ctx.publicRecords('my_app_items', { sort: '-created', limit: 20 })
   return [
     // target: an element id in index.html whose contents this replaces
-    { target: 'item-list', markdown: rows.map((r) => `- ${r.title}`).join('\n') || 'Nothing yet.' },
+    { target: 'item-list', markdown: rows.map((r) => `- [${r.title}](${ctx.contentUrl(`/item/${r.slug}`)})`).join('\n') || 'Nothing yet.' },
     // no target (or a missing one): appended under "## <title>"
     { title: 'About', markdown: 'Extra context for agents.' },
   ]
@@ -532,12 +533,32 @@ function sections(ctx) {
 module.exports = { sections }
 ```
 
+**If the app has hash routes** (`#/item/x`, the deep links people share),
+also export `route(ctx)`. Then `GET /_cubby/content/<name>/item/x` answers
+for the page `/<name>/#/item/x`:
+
+```js
+function route(ctx) {
+  // ctx.route is normalized: "/item/x" (no "#", no trailing slash)
+  const m = /^\/item\/([a-z0-9-]+)$/.exec(ctx.route)
+  if (!m) return null // -> 404 route_not_found
+  const [r] = ctx.publicRecords('my_app_items', { filter: 'slug = {:s}', params: { s: m[1] }, limit: 1 })
+  return r ? { title: r.title, markdown: r.body } : null // pageUrl? overrides /<name>/#<route>
+}
+module.exports = { sections, route }
+```
+
+Without `route`, every route URL answers `404 route_not_found`. That is
+correct for apps with a single view, and it never hands back the shell.
+With `route`, the snapshot's own `#/...` links point at the route snapshots.
+
 `publicRecords(collection, { filter, params, sort, limit })` reads only
 collections whose `listRule` is `""` and returns `publicExport()` rows. The
 snapshot is public, so it must never show more than an anonymous visitor
-could. A throwing hook loses its sections, and the static page is still
-served. Edits need a restart, the same as `mcp.js`. Check the result with
-`curl -s localhost:8090/_cubby/content/<name>`. `pb_hooks/apps/hello/content.js`
+could. A throwing `sections` loses its sections, and the static page is
+still served. A throwing `route` answers 500. Edits need a restart, the same
+as `mcp.js`. Check the result with `curl -s localhost:8090/_cubby/content/<name>`,
+plus one route URL if you export `route`. `pb_hooks/apps/hello/content.js`
 is the reference.
 
 **If the app sits behind sign-in**, declare it in `cubby.json`:
@@ -576,7 +597,9 @@ change and belongs upstream (docs/forking.md).
    confirm the app card shows on the discovery site at `/`.
 4. `curl -s localhost:8090/_cubby/content/<name>` reads like the page. If
    anything `app.js` renders from data is missing, add a `content.js`
-   section for it. Apps with an `access` block return 403 instead.
+   section for it. If the app has hash routes, check that
+   `/_cubby/content/<name>/<route>` reads like that view (export `route`).
+   Apps with an `access` block return 403 instead.
 
 `scripts/smoke.mjs` tests the foundation itself, not apps; running it is
 not part of adding an app.

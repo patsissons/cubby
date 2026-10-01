@@ -6,6 +6,11 @@
 //   GET /_cubby/content/{app}   one app's static page converted to markdown,
 //                               plus the sections its optional
 //                               pb_hooks/apps/<app>/content.js fills in
+//   GET /_cubby/content/{app}/{route...}
+//                               one view of the app: the deep link
+//                               /<app>/#/<route> spelled as a path, answered
+//                               by content.js route(ctx), else 404
+//                               route_not_found
 //
 // Public on purpose: a snapshot holds only what an anonymous browser could
 // already see. A content hook can read only collections whose listRule is ""
@@ -20,4 +25,7 @@
 routerAdd('GET', '/_cubby/content', (e) => require(`${__hooks}/lib/content.js`).serve(e, ''))
 routerAdd('GET', '/_cubby/content/{app}', (e) =>
   require(`${__hooks}/lib/content.js`).serve(e, e.request.pathValue('app'))
+)
+routerAdd('GET', '/_cubby/content/{app}/{route...}', (e) =>
+  require(`${__hooks}/lib/content.js`).serve(e, e.request.pathValue('app'), e.request.pathValue('route'))
 )
