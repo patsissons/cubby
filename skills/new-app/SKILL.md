@@ -552,11 +552,18 @@ Without `route`, every route URL answers `404 route_not_found`. That is
 correct for apps with a single view, and it never hands back the shell.
 With `route`, the snapshot's own `#/...` links point at the route snapshots.
 
-`publicRecords(collection, { filter, params, sort, limit })` reads only
-collections whose `listRule` is `""` and returns `publicExport()` rows. The
-snapshot is public, so it must never show more than an anonymous visitor
-could. A throwing `sections` loses its sections, and the static page is
-still served. A throwing `route` answers 500. Edits need a restart, the same
+`publicRecords(collection, { filter, params, sort, limit, fields })`
+returns only the rows the collection's `listRule` admits for a signed-out
+request: everything for `""`, the matching rows for a conditional rule such
+as `published = true || owner = @request.auth.id` (checked per row, at most
+2000 scanned per call), and an error for a superusers-only (`null`) rule.
+The snapshot is public, so it must never show more than an anonymous
+visitor could. Rows are plain JSON: json fields come back parsed, dates as
+strings, and an unset date as `""`. `fields: ['title', 'status']` trims each
+row to `id` plus those public fields (an unknown or hidden name throws), so
+a hook that needs a few columns skips serializing big json ones. `limit` is
+1..200, default 20. A throwing `sections` loses its sections, and the
+static page is still served. A throwing `route` answers 500. Edits need a restart, the same
 as `mcp.js`. Check the result with `curl -s localhost:8090/_cubby/content/<name>`,
 plus one route URL if you export `route`. `pb_hooks/apps/hello/content.js`
 is the reference.

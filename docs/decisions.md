@@ -457,10 +457,14 @@ tool for sessions already wired in.
 Public is safe because of what a snapshot can contain. The static half is
 the app's own committed index.html, which is already public. The live half
 comes from the app's `content.js`, and its only data access is
-`publicRecords`, which refuses any collection without an empty `listRule`.
-That means a snapshot is bounded by what an anonymous browser could fetch
-from the REST API anyway. The bound comes from the platform, not from each
-author's discipline.
+`publicRecords`, which returns only the rows the collection's own
+`listRule` admits for a signed-out request, the same `canAccessRecord`
+check REST list makes. That means a snapshot is bounded by what an
+anonymous browser could fetch from the REST API anyway. The bound comes
+from the platform, not from each author's discipline. A conditional rule
+is checked row by row, so a selective rule over a big collection stops
+after 2000 scanned rows: a hook may see fewer rows than REST would page
+through, never more.
 
 Rendering is a deliberate approximation: a forgiving HTML-to-markdown pass
 over the static page plus app-supplied sections targeted at element ids.
