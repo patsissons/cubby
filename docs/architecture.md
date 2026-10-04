@@ -898,12 +898,22 @@ the matching route snapshots.
 publicRecords }`. `contentUrl(route)` is the absolute snapshot URL for a
 route, so the app snapshot can link every item to its view.
 `publicRecords(collection,
-{ filter, params, sort, limit })` is the only data access a hook gets: it
-refuses any collection whose `listRule` is not `""`, and returns
-`publicExport()` rows, so a snapshot never shows more than an anonymous
-browser could already fetch. `pb_hooks/apps/hello/content.js` is the
-reference: guestbook entries in the app snapshot, and one entry per route
-(`/_cubby/content/hello/<id>`, mirroring its `/hello/<id>` permalinks).
+{ filter, params, sort, limit, fields })` is the only data access a hook
+gets. It returns exactly the rows the collection's own `listRule` admits
+for a signed-out request, so a snapshot never shows more than an anonymous
+browser could already fetch. With `listRule ""` that is one query. A
+conditional rule (`published = true || owner = @request.auth.id`) is
+checked per row with `app.canAccessRecord` against an anonymous
+`RequestInfo`, the same check REST list makes, paging in batches of 100
+until `limit` rows pass or 2000 rows have been scanned. A superusers-only
+rule (`null`) and system collections are refused. `limit` is clamped to
+1..200 (default 20). Rows come back as plain JSON: `publicExport()` with
+json fields parsed and dates as strings (`""` when unset). `fields` (an
+array of public field names) trims each row to `id` plus those fields; it
+saves serializing large columns, though the query still loads whole rows.
+`pb_hooks/apps/hello/content.js` is the reference: guestbook entries in
+the app snapshot, and one entry per route (`/_cubby/content/hello/<id>`,
+mirroring its `/hello/<id>` permalinks).
 
 **Identity-gated apps** declare an `access` block in `cubby.json`:
 

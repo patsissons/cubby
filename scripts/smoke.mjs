@@ -863,6 +863,7 @@ await test('content: routes answer one view or an explicit 404, never the shell'
   assert.ok((one.headers.get('content-type') || '').startsWith('text/markdown'))
   const view = await one.text()
   assert.ok(view.startsWith('# Guestbook: '), view.slice(0, 200))
+  assert.match(view, /Signed \d{4}-\d{2}-\d{2} /, 'publicRecords hands dates over as strings')
   assert.ok(view.includes(created.message))
   assert.ok(view.includes(`/hello/${created.id}`), 'links the permalink page')
   const hashed = await fetch(`${BASE}/_cubby/content/hello/${encodeURIComponent('#')}/${created.id}`)
@@ -875,6 +876,51 @@ await test('content: routes answer one view or an explicit 404, never the shell'
   }
   const page = await (await fetch(`${BASE}/hello/`)).text()
   assert.ok(page.includes('<noscript data-cubby-content>'), 'the page body points agents at the snapshot')
+})
+
+await test('content: a conditional listRule shows only what anonymous REST lists', async () => {
+  // Collection rules are read per call, so flipping hello's for a moment
+  // needs no restart, but only on a local server this run may change. The
+  // dev server automigrates, so each flip writes a pb_migrations file that
+  // would replay the flip on a fresh database; the finally removes them.
+  if (!/^https?:\/\/(127\.0\.0\.1|localhost)(:|$)/.test(BASE)) {
+    console.log('     (remote SMOKE_URL; conditional rules covered by content-tests.mjs)')
+    return
+  }
+  const { readdirSync, rmSync } = await import('node:fs')
+  const migrations = new URL('../pb_migrations/', import.meta.url)
+  const before = new Set(readdirSync(migrations))
+  const draft = await cubby.db.collection('guestbook').create({
+    message: `smoke-draft at ${new Date().toISOString()}`,
+    user: testUser.id,
+  })
+  const setRule = async (listRule) => {
+    const res = await fetch(`${BASE}/api/collections/hello_guestbook`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: su.token },
+      body: JSON.stringify({ listRule }),
+    })
+    assert.equal(res.status, 200, await res.text())
+  }
+  try {
+    await setRule("message !~ 'smoke-draft' || user = @request.auth.id")
+    const rest = await (await fetch(`${BASE}/api/collections/hello_guestbook/records?perPage=200`)).json()
+    const ids = rest.items.map((r) => r.id)
+    assert.ok(ids.includes(created.id) && !ids.includes(draft.id), 'anonymous REST hides the draft')
+    const snapshot = await (await fetch(`${BASE}/_cubby/content/hello`)).text()
+    assert.ok(snapshot.includes(created.message), 'rows the rule admits are in the snapshot')
+    assert.ok(!snapshot.includes(draft.message), 'the draft is not')
+    const hidden = await fetch(`${BASE}/_cubby/content/hello/${draft.id}`)
+    assert.equal(hidden.status, 404)
+    assert.equal((await hidden.json()).code, 'route_not_found')
+    assert.equal((await fetch(`${BASE}/_cubby/content/hello/${created.id}`)).status, 200)
+  } finally {
+    await setRule('')
+    await cubby.db.collection('guestbook').delete(draft.id).catch(() => {})
+    for (const file of readdirSync(migrations)) {
+      if (!before.has(file) && file.endsWith('_updated_hello_guestbook.js')) rmSync(new URL(file, migrations))
+    }
+  }
 })
 
 await test('content: an app with an access block gets nothing (endpoint and MCP)', async () => {

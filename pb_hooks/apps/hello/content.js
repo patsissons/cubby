@@ -16,10 +16,11 @@
 //     page URL /<app>/#/r/x. Exporting route also makes the snapshot's own
 //     #/... links point at route snapshots.
 // ctx: { app, slug, manifest, route, origin, log, contentUrl(route),
-//   publicRecords(collection, { filter, params, sort, limit }) }.
-//   publicRecords reads only collections whose listRule is "" and returns
-//   publicExport() rows, so a snapshot never shows more than an anonymous
-//   visitor could already see.
+//   publicRecords(collection, { filter, params, sort, limit, fields }) }.
+//   publicRecords returns only the rows the collection's listRule admits for
+//   a signed-out request, so a snapshot never shows more than an anonymous
+//   visitor could already see. Rows are plain JSON (json fields parsed,
+//   dates as strings); fields trims them to id plus the named fields.
 
 const oneLine = (text) => String(text || '').replace(/\s+/g, ' ').trim()
 
