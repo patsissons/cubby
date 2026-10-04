@@ -526,30 +526,90 @@ function originOf(config) {
   return String((config && (config.domain || config.instanceUrl)) || '').replace(/\/+$/, '')
 }
 
+// A conditional listRule is checked row by row, so a selective rule over a
+// big collection is capped at MAX_RULE_SCAN rows (RULE_BATCH per query).
+const MAX_RULE_SCAN = 2000
+const RULE_BATCH = 100
+
 /**
- * Records from a collection anyone may list (listRule ""). This is the only
- * data a content hook can reach, so a snapshot can never show more than an
- * anonymous browser could already fetch.
+ * JSON round trip to plain values. A record marshals through publicExport()
+ * with json fields as JSON, and a DateTime marshals as its string ("" when
+ * unset). A bare json field value does not: see plainRow.
+ */
+function plain(value) {
+  return value === undefined || value === null ? null : JSON.parse(JSON.stringify(value))
+}
+
+/** The fields option as [{ name, type }] starting with id, or null for every public field. */
+function pickFields(fields, wanted, name) {
+  if (wanted === undefined || wanted === null) return null
+  if (!Array.isArray(wanted)) throw new Error('fields must be an array of field names')
+  const known = new Map((fields || []).map((f) => [f.name, f]))
+  const pick = [{ name: 'id', type: 'text' }]
+  for (const f of wanted) {
+    if (typeof f !== 'string') throw new Error('fields must be an array of field names')
+    const field = known.get(f)
+    if (!field || field.hidden) throw new Error(`collection "${name}" has no public field "${f}"`)
+    if (!pick.some((p) => p.name === f)) pick.push({ name: f, type: field.type })
+  }
+  return pick
+}
+
+/**
+ * A record as plain JSON: publicExport() (hidden fields dropped), or just
+ * the picked fields. record.get() hands a json field over as raw bytes, so
+ * those are read as text (getString) and parsed.
+ */
+function plainRow(row, pick) {
+  if (!pick) return plain(row)
+  const out = {}
+  for (const f of pick) {
+    if (f.type === 'json') {
+      const text = row.getString(f.name)
+      out[f.name] = text ? JSON.parse(text) : null
+    } else {
+      out[f.name] = plain(row.get(f.name))
+    }
+  }
+  return out
+}
+
+/**
+ * The rows a signed-out caller may list: everything when the listRule is "",
+ * else the rows app.canAccessRecord admits for an anonymous request, the
+ * same check REST list makes. This is the only data a content hook can
+ * reach, so a snapshot can never show more than an anonymous browser could
+ * already fetch. Rows come back as plain JSON (json fields parsed, dates as
+ * strings, "" when unset), trimmed to id plus `fields` when given.
  */
 function publicRecords(app, name, opts) {
   const o = opts || {}
   if (typeof name !== 'string' || !/^[a-z][a-z0-9_]*$/.test(name)) throw new Error(`invalid collection "${name}"`)
   const collection = app.findCollectionByNameOrId(name)
   const json = JSON.parse(JSON.stringify(collection))
-  if (collection.system || json.listRule !== '') {
-    throw new Error(`collection "${name}" is not publicly listable (listRule must be "")`)
+  const rule = json.listRule
+  if (collection.system) throw new Error(`collection "${name}" is not publicly listable (system collection)`)
+  if (typeof rule !== 'string') {
+    throw new Error(`collection "${name}" is not publicly listable (its listRule is superusers only)`)
   }
+  const pick = pickFields(json.fields, o.fields, name)
   const limit = Number.isInteger(o.limit) ? Math.min(Math.max(o.limit, 1), 200) : 20
-  const rows = app.findRecordsByFilter(
-    name,
-    typeof o.filter === 'string' && o.filter ? o.filter : "id != ''",
-    typeof o.sort === 'string' ? o.sort : '',
-    limit,
-    0,
-    o.params && typeof o.params === 'object' ? o.params : {}
-  )
+  const filter = typeof o.filter === 'string' && o.filter ? o.filter : "id != ''"
+  const sort = typeof o.sort === 'string' ? o.sort : ''
+  const params = o.params && typeof o.params === 'object' ? o.params : {}
+  // RequestInfo is a JSVM global; with no auth it is a signed-out request.
+  const anonymous = rule === '' ? null : new RequestInfo({ method: 'GET', context: 'default' })
+  const batch = anonymous ? RULE_BATCH : limit
   const out = []
-  for (const row of rows) out.push(row.publicExport())
+  for (let offset = 0; out.length < limit && offset < MAX_RULE_SCAN; offset += batch) {
+    const rows = app.findRecordsByFilter(name, filter, sort, batch, offset, params)
+    for (const row of rows) {
+      if (anonymous && !app.canAccessRecord(row, anonymous, rule)) continue
+      out.push(plainRow(row, pick))
+      if (out.length >= limit) break
+    }
+    if (rows.length < batch) break
+  }
   return out
 }
 

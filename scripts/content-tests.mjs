@@ -1,7 +1,7 @@
 // Agent-readable content tests. Pure Node, no server: loads the pure core of
 // pb_hooks/lib/content.js (HTML -> markdown, snapshot assembly) and
-// parseAccess from pb_hooks/lib/config.js, then runs the real app pages
-// through the converter.
+// parseAccess from pb_hooks/lib/config.js, drives publicRecords against a
+// fake JSVM app, then runs the real app pages through the converter.
 //
 //   node scripts/content-tests.mjs
 import assert from 'node:assert/strict'
@@ -198,6 +198,123 @@ await test('the build-owned noscript hint never lands inside a snapshot', () => 
   const html = readFileSync(new URL('../pb_public/hello/index.html', import.meta.url), 'utf8')
   assert.ok(html.includes('<noscript data-cubby-content>'), 'the build injected the hint')
   assert.ok(!md(html).includes('renders with JavaScript'))
+})
+
+// publicRecords against a fake JSVM app: findRecordsByFilter slices `rows`
+// by limit/offset, canAccessRecord asks `passes`, and both count their calls.
+globalThis.RequestInfo = class RequestInfo {
+  constructor(info) {
+    Object.assign(this, info)
+  }
+}
+const FIELDS = [
+  { name: 'id', type: 'text' },
+  { name: 'title', type: 'text' },
+  { name: 'data', type: 'json' },
+  { name: 'secret', type: 'text', hidden: true },
+]
+function fakeApp({ listRule = '', system = false, rows = [], passes = () => true } = {}) {
+  const calls = { queries: [], checks: [] }
+  const app = {
+    findCollectionByNameOrId: () => ({ system, toJSON: () => ({ listRule, fields: FIELDS }) }),
+    findRecordsByFilter: (name, filter, sort, limit, offset, params) => {
+      calls.queries.push({ name, filter, sort, limit, offset, params })
+      return rows.slice(offset, offset + limit)
+    },
+    canAccessRecord: (row, info, rule) => {
+      calls.checks.push({ row, info, rule })
+      return passes(row)
+    },
+  }
+  return { app, calls }
+}
+// get(k) on a json field is raw bytes in the JSVM; getString(k) is its text.
+const row = (n, extra) => ({
+  id: `r${n}`,
+  n,
+  title: `t${n}`,
+  ...extra,
+  get(k) {
+    return k === 'data' ? [...Buffer.from(JSON.stringify(this[k]))] : this[k]
+  },
+  getString(k) {
+    return k === 'data' ? JSON.stringify(this[k] ?? null) : String(this[k] ?? '')
+  },
+})
+const rowsOf = (count) => Array.from({ length: count }, (_, i) => row(i))
+
+await test('publicRecords: listRule "" is one query with no per-row checks', () => {
+  const { app, calls } = fakeApp({ rows: rowsOf(30) })
+  const out = lib.publicRecords(app, 'demo_items', { sort: '-created', limit: 25, filter: 'n > {:n}', params: { n: 1 } })
+  assert.equal(out.length, 25)
+  assert.equal(calls.queries.length, 1)
+  assert.deepEqual(calls.queries[0], { name: 'demo_items', filter: 'n > {:n}', sort: '-created', limit: 25, offset: 0, params: { n: 1 } })
+  assert.equal(calls.checks.length, 0)
+  assert.deepEqual(out[0], { id: 'r0', n: 0, title: 't0' }, 'rows are plain JSON')
+  assert.equal(lib.publicRecords(fakeApp({ rows: rowsOf(300) }).app, 'demo_items', { limit: 999 }).length, 200)
+  assert.equal(lib.publicRecords(fakeApp({ rows: rowsOf(300) }).app, 'demo_items').length, 20)
+})
+
+await test('publicRecords: a conditional rule keeps only rows an anonymous request may list', () => {
+  const rule = "published = true || owner = @request.auth.id"
+  const { app, calls } = fakeApp({ listRule: rule, rows: rowsOf(10), passes: (r) => r.n % 2 === 0 })
+  const out = lib.publicRecords(app, 'demo_items')
+  assert.deepEqual(out.map((r) => r.id), ['r0', 'r2', 'r4', 'r6', 'r8'])
+  assert.equal(calls.checks.length, 10)
+  for (const check of calls.checks) {
+    assert.equal(check.rule, rule)
+    assert.ok(check.info instanceof RequestInfo)
+    assert.equal(check.info.method, 'GET')
+    assert.equal(check.info.context, 'default')
+    assert.equal(check.info.auth, undefined, 'checked signed out')
+  }
+})
+
+await test('publicRecords: pages past rejected rows to fill the limit', () => {
+  const { app, calls } = fakeApp({ listRule: 'published = true', rows: rowsOf(1000), passes: (r) => r.n % 3 === 0 })
+  const out = lib.publicRecords(app, 'demo_items', { limit: 50 })
+  assert.equal(out.length, 50)
+  assert.equal(out[49].id, 'r147')
+  assert.equal(calls.queries.length, 2)
+  assert.deepEqual(calls.queries.map((q) => [q.limit, q.offset]), [[100, 0], [100, 100]])
+})
+
+await test('publicRecords: a rule that passes nothing stops after 2000 rows', () => {
+  const { app, calls } = fakeApp({ listRule: 'published = true', rows: rowsOf(5000), passes: () => false })
+  assert.deepEqual(lib.publicRecords(app, 'demo_items', { limit: 10 }), [])
+  assert.equal(calls.checks.length, 2000)
+  assert.equal(calls.queries.length, 20)
+  const short = fakeApp({ listRule: 'published = true', rows: rowsOf(150), passes: () => false })
+  lib.publicRecords(short.app, 'demo_items')
+  assert.equal(short.calls.queries.length, 2, 'a short batch ends the scan')
+})
+
+await test('publicRecords: superuser-only rules, system collections and bad names throw', () => {
+  assert.throws(() => lib.publicRecords(fakeApp({ listRule: null }).app, 'demo_items'), /superusers only/)
+  assert.throws(() => lib.publicRecords(fakeApp({ system: true }).app, 'demo_items'), /not publicly listable/)
+  assert.throws(() => lib.publicRecords(fakeApp().app, 'Bad'), /invalid collection/)
+  assert.throws(() => lib.publicRecords(fakeApp().app, undefined), /invalid collection/)
+})
+
+await test('publicRecords: JSVM wrappers come back as plain values', () => {
+  // A JSVM record marshals through publicExport(): json fields as JSON, dates as strings.
+  const wrapped = { id: 'r1', toJSON: () => ({ id: 'r1', data: { a: 1 }, when: '' }) }
+  const [out] = lib.publicRecords(fakeApp({ rows: [wrapped] }).app, 'demo_items')
+  assert.deepEqual(out, { id: 'r1', data: { a: 1 }, when: '' })
+})
+
+await test('publicRecords: fields trims rows to id plus the named public fields', () => {
+  const rows = [row(1, { data: { big: [1, 2, 3] }, secret: 's' })]
+  assert.deepEqual(lib.publicRecords(fakeApp({ rows }).app, 'demo_items', { fields: ['title'] }), [{ id: 'r1', title: 't1' }])
+  assert.deepEqual(lib.publicRecords(fakeApp({ rows }).app, 'demo_items', { fields: ['data', 'id', 'data'] }), [
+    { id: 'r1', data: { big: [1, 2, 3] } },
+  ], 'json fields are parsed, not byte codes')
+  const unset = [row(2, { data: undefined })]
+  assert.deepEqual(lib.publicRecords(fakeApp({ rows: unset }).app, 'demo_items', { fields: ['data'] }), [{ id: 'r2', data: null }])
+  assert.throws(() => lib.publicRecords(fakeApp({ rows }).app, 'demo_items', { fields: ['nope'] }), /no public field "nope"/)
+  assert.throws(() => lib.publicRecords(fakeApp({ rows }).app, 'demo_items', { fields: ['secret'] }), /no public field "secret"/)
+  assert.throws(() => lib.publicRecords(fakeApp({ rows }).app, 'demo_items', { fields: 'title' }), /array of field names/)
+  assert.throws(() => lib.publicRecords(fakeApp({ rows }).app, 'demo_items', { fields: [1] }), /array of field names/)
 })
 
 await test('the real hello page converts with its sections and no markup', () => {
