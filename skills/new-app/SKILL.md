@@ -23,8 +23,14 @@ npm run new-app <name> -- --title "My App" --description "One line" --icon "🎯
 - A `_` prefix hides a directory from the discovery site; so does
   `"hidden": true` in `cubby.json`. `"hidden": "access"` shows the card
   only to signed-in users the app's `access` block admits (see "If the app
-  sits behind sign-in"). Absent or `false` is a public card. Any other
-  value fails the build.
+  sits behind sign-in"). Absent or `false` is a public card.
+  `"hidden": { "on": [...], "except": [...] }` decides by the deployment's
+  domain: hidden when a host from `cubby.config.json` `domain`/`instanceUrl`
+  matches `on` (or `on` is absent) and none matches `except`. Globs use `*`
+  (`*.pockethost.io`). hello and docs declare
+  `{ "except": ["cubby.pockethost.io"] }`, so they're visible on the upstream
+  demo and hidden in forks. Rules resolve at build time, so rebuild after
+  changing the config domain. Any other value fails the build.
 - The scaffolder copies `pb_public/_template/` and regenerates `sites.json`.
 
 ## App anatomy

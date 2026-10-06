@@ -798,7 +798,7 @@ reference module (`echo`, `guestbook_recent`).
 
 Platform tools (`pb_hooks/lib/mcp-platform-tools.js`, all read-only):
 `list_apps` (every manifest, hidden apps included, with each card's
-`visibility`: `public`, `hidden` or `access`), `describe_app`
+`visibility`: `public`, `hidden` or `access`, domain rules resolved), `describe_app`
 (manifest, the app's `<slug>_`-prefixed collections with rules, indexes and
 fields, its MCP tools, and whether its token is configured, never the
 value), `list_collections`, `query_records` (a PocketBase filter expression
@@ -1009,6 +1009,16 @@ name, newest, most visited, or recently used using the app_usage rows.
 | absent / `false` | everyone | `pb_public/sites.json` |
 | `true` (or a `_` prefix) | nobody | nowhere |
 | `"access"` | signed-in users the app's `access.allowedUsers` admits (`[]`: anyone signed in) | `pb_hooks/scoped-sites.json` |
+| `{ "on": [...], "except": [...] }` | everyone, unless a deployment host matches `on` (or `on` is absent) and none matches `except`; then nobody | `pb_public/sites.json` when shown |
+
+Domain rules match the hostnames of `cubby.config.json` `domain` and
+`instanceUrl`, not the request's Host header, and `parseVisibility`
+(pb_hooks/lib/config.js) resolves them at build time. sites.json, llms.txt,
+JSON-LD and the visit beacon therefore agree, and MCP `list_apps` resolves
+the same hosts. Globs use `*` for any run of characters: `*.pockethost.io`
+matches `cubby.pockethost.io` but not `pockethost.io`. hello and docs
+declare `{ "except": ["cubby.pockethost.io"] }`: they're listed on the
+upstream demo and hidden in every fork without the fork editing them.
 
 Scoped cards are served per caller by `GET /_cubby/sites/scoped`
 (pb_hooks/sites.pb.js): it reads the live manifests, matches the caller's
