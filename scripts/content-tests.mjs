@@ -1,6 +1,6 @@
 // Agent-readable content tests. Pure Node, no server: loads the pure core of
 // pb_hooks/lib/content.js (HTML -> markdown, snapshot assembly) and
-// parseAccess/parseVisibility/userAllowed from pb_hooks/lib/config.js, drives publicRecords against a
+// the visibility helpers from pb_hooks/lib/config.js, drives publicRecords against a
 // fake JSVM app, then runs the real app pages through the converter.
 //
 //   node scripts/content-tests.mjs
@@ -10,7 +10,7 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const lib = require('../pb_hooks/lib/content.js')
-const { parseAccess, parseVisibility, userAllowed } = require('../pb_hooks/lib/config.js')
+const { parseAccess, parseVisibility, userAllowed, deploymentHosts, domainRuleProblems } = require('../pb_hooks/lib/config.js')
 
 let passed = 0
 async function test(name, fn) {
@@ -148,6 +148,62 @@ await test('parseVisibility: public by default, "access" needs a block, anything
   assert.equal(parseVisibility({ hidden: 'acess', access: {} }), 'hidden')
   assert.equal(parseVisibility({ hidden: 'true' }), 'hidden')
   assert.equal(parseVisibility(null), 'hidden')
+})
+
+await test('deploymentHosts: hostnames of domain and instanceUrl, deduplicated', () => {
+  assert.deepEqual(
+    deploymentHosts({ domain: 'https://cubby.pockethost.io', instanceUrl: 'https://cubby.pockethost.io/' }),
+    ['cubby.pockethost.io']
+  )
+  assert.deepEqual(
+    deploymentHosts({ domain: 'HTTPS://Apps.Example.com:8443/x?y', instanceUrl: 'http://fork.pockethost.io' }),
+    ['apps.example.com', 'fork.pockethost.io']
+  )
+  assert.deepEqual(deploymentHosts({ domain: 'bare.example.com' }), ['bare.example.com'])
+  assert.deepEqual(deploymentHosts({ domain: '', instanceUrl: 42 }), [])
+  assert.deepEqual(deploymentHosts(null), [])
+})
+
+await test('parseVisibility: domain rules match the deployment hosts', () => {
+  const cubby = ['cubby.pockethost.io']
+  const fork = ['apps.example.com', 'fork.pockethost.io']
+  const except = { hidden: { except: ['cubby.pockethost.io'] } }
+  assert.equal(parseVisibility(except, cubby), 'public')
+  assert.equal(parseVisibility(except, ['CUBBY.pockethost.io']), 'public')
+  assert.equal(parseVisibility(except, fork), 'hidden')
+  assert.equal(parseVisibility(except, []), 'hidden')
+  assert.equal(parseVisibility(except), 'hidden')
+
+  const on = { hidden: { on: ['*.pockethost.io'] } }
+  assert.equal(parseVisibility(on, cubby), 'hidden')
+  assert.equal(parseVisibility(on, fork), 'hidden') // any deployment host counts
+  assert.equal(parseVisibility(on, ['pockethost.io']), 'public') // *. needs a subdomain
+  assert.equal(parseVisibility(on, ['apps.example.com']), 'public')
+  assert.equal(parseVisibility(on), 'public')
+
+  const both = { hidden: { on: ['*.pockethost.io'], except: ['cubby.pockethost.io'] } }
+  assert.equal(parseVisibility(both, cubby), 'public')
+  assert.equal(parseVisibility(both, ['fork.pockethost.io']), 'hidden')
+  assert.equal(parseVisibility(both, ['apps.example.com']), 'public')
+
+  assert.equal(parseVisibility({ hidden: { on: ['*'] } }, cubby), 'hidden')
+  assert.equal(parseVisibility({ hidden: { except: ['*'] } }, cubby), 'public')
+})
+
+await test('parseVisibility: malformed domain rules fail closed', () => {
+  const cubby = ['cubby.pockethost.io']
+  for (const hidden of [
+    {},
+    { on: [] },
+    { except: 'cubby.pockethost.io' },
+    { except: ['cubby.pockethost.io', ''] },
+    { except: ['cubby.pockethost.io'], bogus: [] },
+    ['cubby.pockethost.io'],
+  ]) {
+    assert.equal(parseVisibility({ hidden }, cubby), 'hidden', JSON.stringify(hidden))
+  }
+  assert.deepEqual(domainRuleProblems({ except: ['cubby.pockethost.io'] }), [])
+  assert.equal(domainRuleProblems({ on: 'x', bogus: 1 }).length, 3)
 })
 
 await test('userAllowed: empty list admits any signed-in user, else a glob must match', () => {
