@@ -496,3 +496,21 @@ body is the one place that is content exactly when JS doesn't run, which
 describes those fetchers. So the build adds one there too, with the
 deep-link rule spelled out.
 
+## Private discovery cards reuse the access block and match on the server
+
+`"hidden"` grew a third state, `"access"`: show the card only to signed-in
+users the app's `access.allowedUsers` admits. It reuses that list instead
+of carrying its own, so one list says who an app is for. That also means a
+scoped card always comes with withheld agent content, which is the
+consistent pairing: a card the public cannot see shouldn't leak through
+`/_cubby/content` either. A second, independent list was the alternative.
+It allows a card hidden from people who could still read the content, but
+there was no use for that, and it adds a list that can drift.
+
+The matching happens on the server (`GET /_cubby/sites/scoped`). Shipping
+the scoped entries in sites.json and filtering in the browser would publish
+the names it is meant to hide. The scoped list the build writes lives under
+`pb_hooks/`, which deploys but is never served. It only carries `added`
+dates. The endpoint reads the live manifests, so cubby.json stays the one
+place that says who sees a card. For the same reason scoped apps get no
+usage stats: `app_usage` is publicly listable, and a row is a name.
