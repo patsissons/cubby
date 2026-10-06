@@ -514,3 +514,23 @@ the names it is meant to hide. The scoped list the build writes lives under
 dates. The endpoint reads the live manifests, so cubby.json stays the one
 place that says who sees a card. For the same reason scoped apps get no
 usage stats: `app_usage` is publicly listable, and a row is a name.
+
+## Domain-scoped hidden rules match the configured domain at build time
+
+`"hidden"` also takes `{ "on": [...], "except": [...] }`, a list of domain
+globs, so an app can be listed on some deployments and not others. The
+first user is upstream's own apps: hello and docs belong on the
+cubby.pockethost.io demo, but a fork inherits their directories and should
+not list them. Hiding them there would mean editing upstream-owned
+manifests, which the forkability rule forbids.
+
+The rules match the deployment's configured hosts (`domain` and
+`instanceUrl` in cubby.config.json), not the live request's Host header.
+The discovery cards, llms.txt and JSON-LD are static files written by the
+build, and they can't vary by host. Matching per request would mean
+serving sites.json from a hook and still leave the other artifacts wrong.
+The configured domain is also stable across environments: `npm run dev`
+and the smoke tests run on localhost but build against the deployment's
+config, so they see the same cards production does. The cost is that
+changing the domain needs a rebuild, which a domain change already needs
+for its og and JSON-LD origins.

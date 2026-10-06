@@ -39,7 +39,8 @@ const tools = [
     name: 'list_apps',
     description:
       'List every app in this deployment (hidden apps included) with its manifest summary and whether it exposes MCP tools. ' +
-      'visibility says who sees its discovery card: public (everyone), hidden (nobody), or access (signed-in users its access block admits); hidden is true unless public.',
+      'visibility says who sees its discovery card: public (everyone), hidden (nobody), or access (signed-in users its access block admits); hidden is true unless public. ' +
+      'Domain-scoped hidden rules are already resolved against this deployment\'s configured domain.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: readOnly,
   },
@@ -210,7 +211,13 @@ function describeCollection(app, collection) {
 }
 
 function listApps() {
-  const { parseAccess, parseVisibility } = require(`${__hooks}/lib/config.js`)
+  const { parseAccess, parseVisibility, deploymentHosts, loadCubbyConfig } = require(`${__hooks}/lib/config.js`)
+  let hosts = []
+  try {
+    hosts = deploymentHosts(loadCubbyConfig())
+  } catch (err) {
+    // not built yet: domain rules see no hosts, the same as an unconfigured build
+  }
   const apps = []
   for (const entry of $os.readDir(`${__hooks}/../pb_public`)) {
     if (!entry.isDir()) continue
@@ -223,8 +230,8 @@ function listApps() {
       title: str(manifest.title, ''),
       description: str(manifest.description, ''),
       icon: str(manifest.icon, ''),
-      hidden: parseVisibility(manifest) !== 'public',
-      visibility: parseVisibility(manifest),
+      hidden: parseVisibility(manifest, hosts) !== 'public',
+      visibility: parseVisibility(manifest, hosts),
       category: str(manifest.category, ''),
       tags: Array.isArray(manifest.tags) ? manifest.tags : [],
       mcp: !!(manifest.mcp && manifest.mcp.enabled === true),

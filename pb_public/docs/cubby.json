@@ -3,6 +3,7 @@
   "title": "Docs",
   "description": "Learn cubby on a single page: the platform, every API, and how to run your own.",
   "icon": "📚",
+  "hidden": { "except": ["cubby.pockethost.io"] },
   "category": "reference",
   "tags": [
     "documentation",

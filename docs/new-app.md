@@ -10,7 +10,8 @@ The short version: `npm run new-app <name>`, edit, `npm run dev`, ship.
    `cubby.config.json`. Directories starting with `_` are hidden from the
    discovery site; `"hidden": true` in `cubby.json` does the same, and
    `"hidden": "access"` shows the card only to signed-in users the app's
-   `access` block admits.
+   `access` block admits. `"hidden": { "except": ["my.domain"] }` (or
+   `"on"`) hides it per deployment domain, with `*` wildcards.
 2. **Build the app** in `pb_public/my-app/`: plain html/js/css, no build
    step. Load cubby with `<script src="/js/core.js" defer>` then
    `<script src="/js/platform.js" defer>` (core first; skip platform if the
