@@ -140,6 +140,10 @@ clients write a counters collection invites forgery and racy increments, so
 app_usage is writable only by the /_cubby/stats/visit hook (system
 context), which validates the app against sites.json. The foundation fires
 the visit beacon on app boot: anonymous by design, no user linkage.
+Apps missing from sites.json get 204, not 404. The beacon fires on every
+boot, so an error status would put a failed request on every hidden app's
+page, and one answer for unknown and hidden names reveals nothing about
+which hidden apps exist.
 
 ## AI cost controls are server-enforced and deny-by-default
 
