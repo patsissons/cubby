@@ -1007,6 +1007,7 @@ await test('mcp: read_app returns the same snapshot as the public endpoint', asy
   assert.ok(miss.json.result.content[0].text.includes('route_not_found'))
   const apps = await mcp('/_cubby/mcp', toolCall(21, 'list_apps', {}), MCP_TOKEN)
   assert.equal(apps.json.result.structuredContent.apps.find((a) => a.name === 'hello').identityRequired, false)
+  assert.equal(apps.json.result.structuredContent.apps.find((a) => a.name === 'hello').visibility, 'public')
 })
 
 if (created) await cubby.db.collection('guestbook').delete(created.id).catch(() => {})
