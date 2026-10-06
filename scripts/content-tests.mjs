@@ -203,7 +203,8 @@ await test('parseVisibility: malformed domain rules fail closed', () => {
     assert.equal(parseVisibility({ hidden }, cubby), 'hidden', JSON.stringify(hidden))
   }
   assert.deepEqual(domainRuleProblems({ except: ['cubby.pockethost.io'] }), [])
-  assert.equal(domainRuleProblems({ on: 'x', bogus: 1 }).length, 3)
+  assert.equal(domainRuleProblems({ on: 'x', bogus: 1 }).length, 2)
+  assert.deepEqual(domainRuleProblems({ on: [] }), ['needs at least one domain in "on" or "except"'])
 })
 
 await test('userAllowed: empty list admits any signed-in user, else a glob must match', () => {

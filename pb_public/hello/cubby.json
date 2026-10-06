@@ -3,6 +3,7 @@
   "title": "Hello",
   "description": "The example app: every cubby subsystem on one page.",
   "icon": "👋",
+  "hidden": { "except": ["cubby.pockethost.io"] },
   "category": "examples",
   "tags": [
     "demo",
