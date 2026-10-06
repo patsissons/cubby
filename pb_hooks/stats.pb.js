@@ -15,7 +15,10 @@ routerAdd('POST', '/_cubby/stats/visit', (e) => {
     return e.json(400, { code: 'bad_request', message: 'invalid app name' })
   }
 
-  // Only apps the discovery manifest knows about get rows.
+  // Only apps the discovery manifest knows about get rows. Unknown and
+  // hidden apps get the same quiet 204: the beacon fires on every boot, so
+  // an error status would flag every hidden app's page, and one answer for
+  // both keeps a hidden app's existence private.
   let known = false
   try {
     const sites = JSON.parse(toString($os.readFile(`${__hooks}/../pb_public/sites.json`)))
@@ -24,7 +27,7 @@ routerAdd('POST', '/_cubby/stats/visit', (e) => {
     known = false
   }
   if (!known) {
-    return e.json(404, { code: 'not_found', message: 'unknown app' })
+    return e.noContent(204)
   }
 
   const now = new Date().toISOString().replace('T', ' ')
