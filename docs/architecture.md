@@ -993,8 +993,9 @@ unreliable under hibernation (see decisions.md).
 
 `POST /_cubby/stats/visit` (pb_hooks/stats.pb.js) bumps an anonymous
 per-app counter in the `app_usage` collection: one row per app with visits
-and lastVisit, public read, hook-only writes (clients cannot forge values),
-unknown apps rejected against sites.json. The foundation fires the beacon
+and lastVisit, public read, hook-only writes (clients cannot forge values).
+Only apps in sites.json are counted; any other well-formed name, unknown or
+hidden, gets an empty 204 and no row. The foundation fires the beacon
 automatically when an app boots in a browser; no user data is attached.
 
 The discovery site builds its cards from sites.json (title, description,
