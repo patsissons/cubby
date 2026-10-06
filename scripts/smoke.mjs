@@ -399,35 +399,38 @@ await test('hooks: sweep endpoint responds', async () => {
 })
 
 await test('hooks: visit stats increment anonymously', async () => {
-  const visit = () =>
+  // Count an app this deployment actually lists: domain-scoped hidden rules
+  // drop hello and docs from sites.json in forks.
+  const { readFileSync } = await import('node:fs')
+  const sites = JSON.parse(readFileSync(new URL('../pb_public/sites.json', import.meta.url), 'utf8'))
+  const listed = sites[0]?.name
+  const visit = (app) =>
     fetch(`${BASE}/_cubby/stats/visit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ app: 'hello' }),
+      body: JSON.stringify({ app }),
     })
-  const first = await visit()
-  assert.equal(first.status, 200)
-  await visit()
+  const usage = (app) =>
+    fetch(
+      `${BASE}/api/collections/app_usage/records?filter=${encodeURIComponent(`app='${app}'`)}`
+    ).then((r) => r.json())
 
-  const rows = await fetch(
-    `${BASE}/api/collections/app_usage/records?filter=${encodeURIComponent("app='hello'")}`
-  ).then((r) => r.json())
-  assert.equal(rows.totalItems, 1, 'one counter row per app')
-  assert.ok(rows.items[0].visits >= 2)
-  assert.ok(rows.items[0].lastVisit)
+  if (listed) {
+    const first = await visit(listed)
+    assert.equal(first.status, 200)
+    await visit(listed)
 
-  const unknown = await fetch(`${BASE}/_cubby/stats/visit`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ app: 'not-a-real-app' }),
-  })
-  assert.equal(unknown.status, 404, 'unknown apps get no rows')
+    const rows = await usage(listed)
+    assert.equal(rows.totalItems, 1, 'one counter row per app')
+    assert.ok(rows.items[0].visits >= 2)
+    assert.ok(rows.items[0].lastVisit)
+  }
 
-  const invalid = await fetch(`${BASE}/_cubby/stats/visit`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ app: 'Bad Name!' }),
-  })
+  const unknown = await visit('not-a-real-app')
+  assert.equal(unknown.status, 204, 'unlisted apps are acknowledged quietly')
+  assert.equal((await usage('not-a-real-app')).totalItems, 0, 'unlisted apps get no rows')
+
+  const invalid = await visit('Bad Name!')
   assert.equal(invalid.status, 400)
 })
 
