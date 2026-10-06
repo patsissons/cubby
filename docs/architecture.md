@@ -797,7 +797,8 @@ pattern, items) before `call` runs. `pb_hooks/apps/hello/mcp.js` is the
 reference module (`echo`, `guestbook_recent`).
 
 Platform tools (`pb_hooks/lib/mcp-platform-tools.js`, all read-only):
-`list_apps` (every manifest, hidden apps included), `describe_app`
+`list_apps` (every manifest, hidden apps included, with each card's
+`visibility`: `public`, `hidden` or `access`), `describe_app`
 (manifest, the app's `<slug>_`-prefixed collections with rules, indexes and
 fields, its MCP tools, and whether its token is configured, never the
 value), `list_collections`, `query_records` (a PocketBase filter expression
@@ -931,6 +932,9 @@ closed on a malformed block, and the build rejects one naming the app.
 The block does not gate the static page itself: the browser app still checks
 `cubby.identity` for anything it shows.
 
+The same block can scope the app's **discovery card** with
+`"hidden": "access"` (see "Usage stats and the discovery site").
+
 **Discovery.** An agent may hold nothing but a page URL, so the build puts
 two pointers into every open app page and the root page, both tagged
 `data-cubby-content` and rewritten on every build:
@@ -998,6 +1002,27 @@ icon, category, tags, and an `added` date stamped once per app by the
 manifest build), offers search across all of those fields, and sorts by
 name, newest, most visited, or recently used using the app_usage rows.
 
+`"hidden"` in `cubby.json` picks who sees an app's card:
+
+| `hidden` | card shown to | lives in |
+|---|---|---|
+| absent / `false` | everyone | `pb_public/sites.json` |
+| `true` (or a `_` prefix) | nobody | nowhere |
+| `"access"` | signed-in users the app's `access.allowedUsers` admits (`[]`: anyone signed in) | `pb_hooks/scoped-sites.json` |
+
+Scoped cards are served per caller by `GET /_cubby/sites/scoped`
+(pb_hooks/sites.pb.js): it reads the live manifests, matches the caller's
+email against `access.allowedUsers` with the same globs as `ai`, takes
+`added` from `scoped-sites.json`, and answers `Cache-Control: private,
+no-store`. Signed out, the list is empty. The landing page paints
+sites.json first, then merges these cards in (with a "private" chip) on
+every identity change. Because sites.json, llms.txt, JSON-LD and app_usage
+are all public, a scoped app appears in none of them: the build keeps it out
+of each, and the visit beacon rejects it, so scoped cards have no usage
+stats. The build fails on any other `hidden` value, or on `"access"`
+without an `access` block. Like `hidden: true`, this hides the card, not
+the page at `/<name>/`.
+
 ## llms.txt and structured data
 
 The manifest build generates machine-readable metadata alongside the human
@@ -1029,7 +1054,8 @@ discovery site, all from the same source of truth (`cubby.json` files plus
   and the platform MCP. Apps with an `access` block get the "sign-in required" line instead
   of a link (see "Agent-readable content").
 
-Hidden apps (underscore prefix or `"hidden": true`) appear in neither, and
+Hidden apps (underscore prefix, `"hidden": true` or `"hidden": "access"`)
+appear in neither, and
 `_template` gets nothing. Both outputs are pure functions of the manifests
 and config — no dates or hashes — so rebuilds are byte-stable and CI's
 drift check applies to them like any other committed artifact.
@@ -1049,7 +1075,8 @@ Set `PB_HTTP=127.0.0.1:8091` to use another port.
 ## Deployment
 
 `deploy.yml` runs on push to main: `npm ci`, rebuild the bundles +
-`sites.json` + the llms.txt files + the JSON-LD blocks + the config copy,
+`sites.json` + `pb_hooks/scoped-sites.json` + the llms.txt files + the
+JSON-LD blocks + the config copy,
 fail if committed artifacts drifted, then
 sync via PocketHost's phio CLI (SFTP, port 2222, Ed25519 deploy key), then
 power cycle the instance through the mothership API and health-check it back

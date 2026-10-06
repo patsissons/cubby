@@ -80,6 +80,10 @@
         margin-bottom: 1.1rem;
       }
 
+      .toolbar[hidden] {
+        display: none;
+      }
+
       .toolbar input,
       .toolbar select {
         font: inherit;
@@ -135,6 +139,10 @@
       .chip.category {
         color: var(--accent);
         font-weight: 600;
+      }
+
+      .chip.private {
+        border: 1px dashed currentColor;
       }
 
       .card .meta {
@@ -312,6 +320,10 @@
         </div>
         <ul class="grid" id="grid"></ul>
         <p class="no-match" id="no-match" hidden>nothing matches that filter</p>
+        <div class="empty" id="empty" hidden>
+          <p>Nothing on the shelf yet.</p>
+          <p>Run <code>npm run new-app &lt;name&gt;</code> to add the first app.</p>
+        </div>
       </div>
     </main>
 
@@ -332,7 +344,13 @@
         const search = document.getElementById('search')
         const sortSelect = document.getElementById('sort')
         const noMatch = document.getElementById('no-match')
+        const empty = document.getElementById('empty')
 
+        // Public cards come from the static sites.json; cards for apps that
+        // say "hidden": "access" come per user from /_cubby/sites/scoped once
+        // someone allowed is signed in. render() shows the union.
+        let publicSites = []
+        let scopedSites = []
         let sites = []
         const usage = new Map()
 
@@ -386,7 +404,7 @@
           const query = search.value.trim()
           const shown = sites.filter((s) => matches(s, query)).sort(sorters[sortSelect.value] || sorters.name)
           grid.innerHTML = ''
-          noMatch.hidden = shown.length > 0
+          noMatch.hidden = shown.length > 0 || !sites.length
           for (const site of shown) {
             const li = document.createElement('li')
             const a = document.createElement('a')
@@ -407,9 +425,16 @@
               span.textContent = meta
               a.append(span)
             }
-            if (site.category || site.tags?.length) {
+            if (site.scoped || site.category || site.tags?.length) {
               const chips = document.createElement('span')
               chips.className = 'chips'
+              if (site.scoped) {
+                const chip = document.createElement('span')
+                chip.className = 'chip private'
+                chip.textContent = 'private'
+                chip.title = 'Only signed-in people this app allows see this card'
+                chips.append(chip)
+              }
               if (site.category) {
                 const chip = document.createElement('span')
                 chip.className = 'chip category'
@@ -443,29 +468,57 @@
           cubby.preview(grid, { selector: 'a.card', delay: 1000 })
         }
 
+        function refresh() {
+          const listed = new Set(publicSites.map((site) => site.name))
+          sites = publicSites.concat(
+            scopedSites.filter((site) => !listed.has(site.name)).map((site) => ({ ...site, scoped: true }))
+          )
+          toolbar.hidden = !sites.length
+          empty.hidden = sites.length > 0
+          render()
+        }
+
+        search.addEventListener('input', render)
+        sortSelect.addEventListener('change', render)
+
         try {
-          sites = await fetch('/sites.json').then((r) => r.json())
-          if (!sites.length) {
-            grid.outerHTML =
-              '<div class="empty"><p>Nothing on the shelf yet.</p><p>Run <code>npm run new-app &lt;name&gt;</code> to add the first app.</p></div>'
-          } else {
-            toolbar.hidden = false
-            search.addEventListener('input', render)
-            sortSelect.addEventListener('change', render)
-            render()
-            // Usage stats are optional flavor; merge them in when they load.
-            fetch('/api/collections/app_usage/records?perPage=200')
-              .then((r) => r.json())
-              .then((page) => {
-                for (const row of page.items || []) {
-                  usage.set(row.app, { visits: row.visits, lastVisit: row.lastVisit })
-                }
-                render()
-              })
-              .catch(() => {})
-          }
+          publicSites = await fetch('/sites.json').then((r) => r.json())
+          refresh()
+          // Usage stats are optional flavor; merge them in when they load.
+          // Scoped apps never have any: app_usage is public, so counting them
+          // would leak their names.
+          fetch('/api/collections/app_usage/records?perPage=200')
+            .then((r) => r.json())
+            .then((page) => {
+              for (const row of page.items || []) {
+                usage.set(row.app, { visits: row.visits, lastVisit: row.lastVisit })
+              }
+              render()
+            })
+            .catch(() => {})
         } catch (err) {
           console.error('sites.json failed', err)
+        }
+
+        // Identity-scoped cards: reload on every sign-in and sign-out (the
+        // auth store is shared by every app on this origin), dropping a
+        // response that a later identity change has overtaken.
+        let scopedLoad = 0
+        async function loadScoped() {
+          const load = ++scopedLoad
+          let next = []
+          const token = cubby.identity.user ? cubby._pb.authStore.token : ''
+          if (token) {
+            try {
+              const res = await fetch('/_cubby/sites/scoped', { headers: { Authorization: token } })
+              if (res.ok) next = (await res.json()).sites || []
+            } catch (err) {
+              console.warn('scoped cards unavailable', err)
+            }
+          }
+          if (load !== scopedLoad) return
+          scopedSites = next
+          refresh()
         }
 
         // Live flourish: presence count in the root lobby via the platform's
@@ -477,6 +530,7 @@
           if (cubby.config && cubby.config.title) {
             document.title = cubby.config.title
           }
+          cubby.identityChanged(loadScoped)
           const lobby = cubby.rooms.room('lobby')
           const render = () => {
             const n = lobby.users.length

@@ -38,7 +38,8 @@ const tools = [
   {
     name: 'list_apps',
     description:
-      'List every app in this deployment (hidden apps included) with its manifest summary and whether it exposes MCP tools.',
+      'List every app in this deployment (hidden apps included) with its manifest summary and whether it exposes MCP tools. ' +
+      'visibility says who sees its discovery card: public (everyone), hidden (nobody), or access (signed-in users its access block admits); hidden is true unless public.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: readOnly,
   },
@@ -209,6 +210,7 @@ function describeCollection(app, collection) {
 }
 
 function listApps() {
+  const { parseAccess, parseVisibility } = require(`${__hooks}/lib/config.js`)
   const apps = []
   for (const entry of $os.readDir(`${__hooks}/../pb_public`)) {
     if (!entry.isDir()) continue
@@ -221,11 +223,12 @@ function listApps() {
       title: str(manifest.title, ''),
       description: str(manifest.description, ''),
       icon: str(manifest.icon, ''),
-      hidden: manifest.hidden === true,
+      hidden: parseVisibility(manifest) !== 'public',
+      visibility: parseVisibility(manifest),
       category: str(manifest.category, ''),
       tags: Array.isArray(manifest.tags) ? manifest.tags : [],
       mcp: !!(manifest.mcp && manifest.mcp.enabled === true),
-      identityRequired: !!require(`${__hooks}/lib/config.js`).parseAccess(manifest),
+      identityRequired: !!parseAccess(manifest),
     })
   }
   apps.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))

@@ -1,6 +1,6 @@
 // Agent-readable content tests. Pure Node, no server: loads the pure core of
 // pb_hooks/lib/content.js (HTML -> markdown, snapshot assembly) and
-// parseAccess from pb_hooks/lib/config.js, drives publicRecords against a
+// parseAccess/parseVisibility/userAllowed from pb_hooks/lib/config.js, drives publicRecords against a
 // fake JSVM app, then runs the real app pages through the converter.
 //
 //   node scripts/content-tests.mjs
@@ -10,7 +10,7 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const lib = require('../pb_hooks/lib/content.js')
-const { parseAccess } = require('../pb_hooks/lib/config.js')
+const { parseAccess, parseVisibility, userAllowed } = require('../pb_hooks/lib/config.js')
 
 let passed = 0
 async function test(name, fn) {
@@ -135,6 +135,29 @@ await test('parseAccess: absent or null is open; any block is gated, failing clo
   assert.deepEqual(parseAccess({ access: {} }), { allowedUsers: [] })
   assert.deepEqual(parseAccess({ access: { allowedUsers: ['*@x.com'] } }), { allowedUsers: ['*@x.com'] })
   assert.deepEqual(parseAccess({ access: true }), { allowedUsers: [] })
+})
+
+await test('parseVisibility: public by default, "access" needs a block, anything else hidden', () => {
+  assert.equal(parseVisibility({}), 'public')
+  assert.equal(parseVisibility({ hidden: false }), 'public')
+  assert.equal(parseVisibility({ hidden: null }), 'public')
+  assert.equal(parseVisibility({ hidden: true }), 'hidden')
+  assert.equal(parseVisibility({ hidden: 'access', access: {} }), 'access')
+  assert.equal(parseVisibility({ hidden: 'access', access: { allowedUsers: ['me@x.com'] } }), 'access')
+  assert.equal(parseVisibility({ hidden: 'access' }), 'hidden')
+  assert.equal(parseVisibility({ hidden: 'acess', access: {} }), 'hidden')
+  assert.equal(parseVisibility({ hidden: 'true' }), 'hidden')
+  assert.equal(parseVisibility(null), 'hidden')
+})
+
+await test('userAllowed: empty list admits any signed-in user, else a glob must match', () => {
+  assert.equal(userAllowed({ allowedUsers: [] }, 'anyone@x.com'), true)
+  assert.equal(userAllowed({ allowedUsers: [] }, ''), false)
+  assert.equal(userAllowed({ allowedUsers: ['me@x.com'] }, 'Me@X.com'), true)
+  assert.equal(userAllowed({ allowedUsers: ['me@x.com'] }, 'you@x.com'), false)
+  assert.equal(userAllowed({ allowedUsers: ['*@x.com'] }, 'you@x.com'), true)
+  assert.equal(userAllowed({ allowedUsers: ['*@x.com'] }, 'you@y.com'), false)
+  assert.equal(userAllowed(null, 'me@x.com'), false)
 })
 
 await test('normalizeRoute: hash, slashes and junk', () => {

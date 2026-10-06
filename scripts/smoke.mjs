@@ -684,6 +684,47 @@ await test('ai: allowedUsers email globs gate access', async () => {
   }
 })
 
+await test('sites: "hidden": "access" cards reach only allowed identities', async () => {
+  const { writeFileSync, mkdirSync, rmSync, readFileSync } = await import('node:fs')
+  // No underscore: the endpoint skips _-prefixed dirs like every app scan.
+  const dir = new URL('../pb_public/smoke-scoped/', import.meta.url)
+  const sitesBefore = readFileSync(new URL('../pb_public/sites.json', import.meta.url), 'utf8')
+  mkdirSync(dir, { recursive: true })
+  try {
+    const fixture = (allowedUsers) =>
+      writeFileSync(
+        new URL('cubby.json', dir),
+        JSON.stringify({ name: 'smoke-scoped', title: 'Smoke Scoped', hidden: 'access', access: { allowedUsers } })
+      )
+    const scoped = async (token) => {
+      const res = await fetch(`${BASE}/_cubby/sites/scoped`, { headers: token ? { Authorization: token } : {} })
+      assert.equal(res.status, 200)
+      assert.equal(res.headers.get('cache-control'), 'private, no-store')
+      return (await res.json()).sites.map((site) => site.name)
+    }
+
+    fixture(['smoke@cubby.test'])
+    assert.deepEqual(await scoped(), [], 'signed out sees no scoped cards')
+    assert.ok((await scoped(impersonated.token)).includes('smoke-scoped'), 'allowed email sees the card')
+    assert.ok(!(await scoped(impersonated2.token)).includes('smoke-scoped'), 'other email does not')
+
+    fixture(['*@cubby.test'])
+    assert.ok((await scoped(impersonated2.token)).includes('smoke-scoped'), 'wildcard domain sees the card')
+
+    fixture([])
+    assert.ok((await scoped(impersonated.token)).includes('smoke-scoped'), 'empty list: any signed-in user')
+    assert.ok((await scoped(impersonated2.token)).includes('smoke-scoped'), 'empty list: any signed-in user')
+    assert.deepEqual(await scoped(), [], 'empty list still needs sign-in')
+
+    // The public registry never learns the name.
+    const sites = await fetch(`${BASE}/sites.json`).then((r) => r.json())
+    assert.ok(!sites.some((site) => site.name === 'smoke-scoped'), 'scoped app stays out of sites.json')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+  assert.equal(readFileSync(new URL('../pb_public/sites.json', import.meta.url), 'utf8'), sitesBefore)
+})
+
 // --- mcp: the agent-facing endpoints (raw fetch; no client library) ---
 
 /** POST a JSON-RPC body (object, array, or raw string) to an MCP endpoint. */
@@ -966,6 +1007,7 @@ await test('mcp: read_app returns the same snapshot as the public endpoint', asy
   assert.ok(miss.json.result.content[0].text.includes('route_not_found'))
   const apps = await mcp('/_cubby/mcp', toolCall(21, 'list_apps', {}), MCP_TOKEN)
   assert.equal(apps.json.result.structuredContent.apps.find((a) => a.name === 'hello').identityRequired, false)
+  assert.equal(apps.json.result.structuredContent.apps.find((a) => a.name === 'hello').visibility, 'public')
 })
 
 if (created) await cubby.db.collection('guestbook').delete(created.id).catch(() => {})

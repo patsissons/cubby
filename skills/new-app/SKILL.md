@@ -21,7 +21,10 @@ npm run new-app <name> -- --title "My App" --description "One line" --icon "🎯
   (`api`, `_`, `js`, `_template`, `index.html`, `sites.json`, `llms.txt`,
   `cubby.config.json`).
 - A `_` prefix hides a directory from the discovery site; so does
-  `"hidden": true` in `cubby.json`.
+  `"hidden": true` in `cubby.json`. `"hidden": "access"` shows the card
+  only to signed-in users the app's `access` block admits (see "If the app
+  sits behind sign-in"). Absent or `false` is a public card. Any other
+  value fails the build.
 - The scaffolder copies `pb_public/_template/` and regenerates `sites.json`.
 
 ## App anatomy
@@ -580,6 +583,21 @@ The content link and `llms.txt` link disappear on the next build. The block
 does not hide `index.html` itself, so keep private data out of the static
 markup and check `cubby.identity` in `app.js` as usual.
 
+To also keep the app's **discovery card** private, add `"hidden": "access"`:
+
+```json
+"hidden": "access",
+"access": { "allowedUsers": ["me@example.com"] }
+```
+
+The app leaves `sites.json`, JSON-LD, `llms.txt` and usage stats, and is
+written to `pb_hooks/scoped-sites.json` (deployed, never served; commit it
+with the other build artifacts). The landing page asks
+`GET /_cubby/sites/scoped` for the cards the signed-in user may see, and
+shows them with a "private" chip. The same `allowedUsers` rules apply.
+Like `hidden: true`, this hides the card, not the page: `/<name>/` still
+loads for anyone with the URL.
+
 ## What NOT to touch
 
 - `foundation/`, `pb_public/js/`, `pb_public/css/` (built artifacts)
@@ -601,7 +619,8 @@ change and belongs upstream (docs/forking.md).
    `/_/`, superuser local@cubby.test / cubby-local-dev).
 3. `npm run build` so `sites.json`, the llms.txt files, the JSON-LD
    blocks and the content `<link>` are fresh (CI fails on drift), and
-   confirm the app card shows on the discovery site at `/`.
+   confirm the app card shows on the discovery site at `/` (for
+   `"hidden": "access"`, only when signed in as an allowed user).
 4. `curl -s localhost:8090/_cubby/content/<name>` reads like the page. If
    anything `app.js` renders from data is missing, add a `content.js`
    section for it. If the app has hash routes, check that
@@ -617,8 +636,9 @@ One app directory + optional `_app_<name>_` migrations + optional
 `pb_hooks/apps/<name>/` hooks (`mcp.js` when the manifest declares
 `mcp`, `content.js` when the page renders data) + the regenerated build
 artifacts:
-`sites.json`, the llms.txt files (root and the app's own),
-and the root `pb_public/index.html` (its JSON-LD app list grows).
+`sites.json` (or `pb_hooks/scoped-sites.json` for `"hidden": "access"`),
+the llms.txt files (root and the app's own), and the root
+`pb_public/index.html` (its JSON-LD app list grows).
 `pb_public/cubby.config.json` is a build-time copy of the root config:
 include it if `npm run build` refreshed it, never edit it by hand. Nothing
 else. Commit messages describe the app, not the scaffolding.

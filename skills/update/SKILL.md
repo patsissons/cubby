@@ -50,7 +50,7 @@ against the deployment's own config, and ships them to the instance.
    | Path | Resolution |
    |---|---|
    | `cubby.config.json` (repo root) | Keep the deployment's identity values (name, title, domain, instanceUrl, oauthProviders) AND its model selection: entries the deployment removed stay removed, entries it added stay. From upstream adopt structure only: new config keys, refreshed ids for `ai.models` entries the deployment kept, additions to reservedNames. |
-   | `pb_public/js/*`, `pb_public/css/*`, `pb_public/sites.json`, `pb_public/cubby.config.json` | Build artifacts (the root `cubby.config.json` is NOT one; see the row above): take either side, step 4 regenerates them. Minified bundles conflict on nearly every upstream change, and there are now several of them, so do not hand-merge: `git checkout --theirs pb_public/js pb_public/css && npm run build && git add pb_public/js pb_public/css`. Resolve `foundation/src/**` properly; the artifacts fall out of the build. |
+   | `pb_public/js/*`, `pb_public/css/*`, `pb_public/sites.json`, `pb_hooks/scoped-sites.json`, `pb_public/cubby.config.json` | Build artifacts (the root `cubby.config.json` is NOT one; see the row above): take either side, step 4 regenerates them. Minified bundles conflict on nearly every upstream change, and there are now several of them, so do not hand-merge: `git checkout --theirs pb_public/js pb_public/css && npm run build && git add pb_public/js pb_public/css`. Resolve `foundation/src/**` properly; the artifacts fall out of the build. |
    | `pb_public/<your apps>/`, `pb_migrations/*_app_*`, `pb_hooks/apps/<your apps>/` | Keep the deployment's; upstream never touches them. |
    | Any other platform file | Take upstream. A genuine conflict here means platform edits leaked into the deployment (forkability violation): adopt upstream now, port the local change to a cubby PR later. |
 
@@ -65,7 +65,7 @@ against the deployment's own config, and ships them to the instance.
    ```
 
    `npm run build` regenerates the bundles, `pb_public/css/tokens.css`,
-   `sites.json`, and the pb_public config copy from the deployment's own
+   `sites.json`, `pb_hooks/scoped-sites.json`, and the pb_public config copy from the deployment's own
    `cubby.config.json`. Spot-check with `npm run dev` (discovery site + one
    app), run `npm test` (pure Node, no server), and for platform-heavy updates
    run `node scripts/smoke.mjs` against the dev server. If the preview showed

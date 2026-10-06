@@ -8,7 +8,9 @@ The short version: `npm run new-app <name>`, edit, `npm run dev`, ship.
    `-- --title "My App" --description "..." --icon "🎯"`).
    Names must match `[a-z0-9-]+` and avoid the reserved list in
    `cubby.config.json`. Directories starting with `_` are hidden from the
-   discovery site; `"hidden": true` in `cubby.json` does the same.
+   discovery site; `"hidden": true` in `cubby.json` does the same, and
+   `"hidden": "access"` shows the card only to signed-in users the app's
+   `access` block admits.
 2. **Build the app** in `pb_public/my-app/`: plain html/js/css, no build
    step. Load cubby with `<script src="/js/core.js" defer>` then
    `<script src="/js/platform.js" defer>` (core first; skip platform if the
@@ -66,7 +68,8 @@ static index.html as markdown. If the page fills containers from data, ship
 has hash routes, export `route(ctx)` there as well, so the deep link
 `/my-app/#/x` reads at `/_cubby/content/my-app/x`. If the
 app sits behind sign-in, declare `"access": { "allowedUsers": [...] }` in
-`cubby.json` and no snapshot is served. See "Agent-readable content" in
+`cubby.json` and no snapshot is served. Add `"hidden": "access"` to show
+its discovery card to those users only. See "Agent-readable content" in
 `skills/new-app/SKILL.md`.
 
 ## What not to touch
@@ -83,5 +86,6 @@ need a platform change, that change belongs upstream in cubby: see
 One app directory (`pb_public/my-app/`), optional app migrations
 (`pb_migrations/*_app_my_app_*.js`), optional app hooks
 (`pb_hooks/apps/my-app/`), and the regenerated build artifacts:
-`sites.json`, the llms.txt files (root and the app's own), and the root
+`sites.json` (or `pb_hooks/scoped-sites.json` for `"hidden": "access"`),
+the llms.txt files (root and the app's own), and the root
 `pb_public/index.html` (its JSON-LD app list grows). Nothing else.

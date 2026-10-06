@@ -3,26 +3,65 @@
 // server hooks read the same registry the repo declares.
 import { readdirSync, readFileSync, writeFileSync, copyFileSync, existsSync } from 'node:fs'
 import { createHash } from 'node:crypto'
+import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const publicDir = path.join(root, 'pb_public')
+// Cards shown only to identities passing the app's access block
+// ("hidden": "access"). Under pb_hooks/ so it deploys but is never served:
+// sites.json is public, and these names must not leak through it.
+const scopedPath = path.join(root, 'pb_hooks', 'scoped-sites.json')
+const { parseVisibility } = createRequire(import.meta.url)('../pb_hooks/lib/config.js')
 
-// Carry forward first-seen dates from the committed manifest so `added`
-// stays stable across rebuilds (new apps get stamped once).
-let previous = {}
-try {
-  for (const site of JSON.parse(readFileSync(path.join(publicDir, 'sites.json'), 'utf8'))) {
-    previous[site.name] = site
+// Carry forward first-seen dates from the committed manifests so `added`
+// stays stable across rebuilds (new apps get stamped once), including when
+// an app moves between the public and scoped lists.
+const previous = {}
+for (const file of [path.join(publicDir, 'sites.json'), scopedPath]) {
+  try {
+    for (const site of JSON.parse(readFileSync(file, 'utf8'))) previous[site.name] = site
+  } catch {
+    // first build, or the file is missing: new apps get stamped today
   }
-} catch {
-  previous = {}
 }
 
 const today = new Date().toISOString().slice(0, 10)
 
+// Hidden declarations (cubby.json "hidden"): absent/false is a public card,
+// true is no card, "access" is a card only for identities passing the app's
+// access block. The server treats anything else as hidden, so a typo would
+// quietly drop a card; name it here instead. Checked before sites.json is
+// written so a failed build cannot drop an app's carried-forward `added`.
+{
+  const problems = []
+  for (const entry of readdirSync(publicDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const manifestPath = path.join(publicDir, entry.name, 'cubby.json')
+    if (!existsSync(manifestPath)) continue
+    let manifest = {}
+    try {
+      manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+    } catch {
+      continue // reported below by the manifest pass
+    }
+    const hidden = manifest.hidden
+    if (hidden === undefined || hidden === null || typeof hidden === 'boolean') continue
+    if (hidden !== 'access') {
+      problems.push(`${entry.name}: "hidden" must be true, false or "access" (got ${JSON.stringify(hidden)})`)
+    } else if (manifest.access === undefined || manifest.access === null) {
+      problems.push(`${entry.name}: "hidden": "access" needs an "access" block naming who sees the card`)
+    }
+  }
+  if (problems.length) {
+    console.error(`invalid "hidden" flag:\n  ${problems.join('\n  ')}`)
+    process.exit(1)
+  }
+}
+
 const sites = []
+const scoped = []
 for (const entry of readdirSync(publicDir, { withFileTypes: true })) {
   if (!entry.isDirectory()) continue
   // Underscore-prefixed directories are hidden from the manifest by convention.
@@ -37,9 +76,11 @@ for (const entry of readdirSync(publicDir, { withFileTypes: true })) {
     console.error(`invalid JSON in ${manifestPath}: ${err.message}`)
     process.exit(1)
   }
-  if (manifest.hidden === true) continue
+  const visibility = parseVisibility(manifest)
+  if (visibility === 'hidden') continue
 
-  sites.push({
+  const list = visibility === 'access' ? scoped : sites
+  list.push({
     name: entry.name,
     title: manifest.title || entry.name,
     description: manifest.description || '',
@@ -51,8 +92,10 @@ for (const entry of readdirSync(publicDir, { withFileTypes: true })) {
 }
 
 sites.sort((a, b) => a.title.localeCompare(b.title))
+scoped.sort((a, b) => a.title.localeCompare(b.title))
 
 writeFileSync(path.join(publicDir, 'sites.json'), JSON.stringify(sites, null, 2) + '\n')
+writeFileSync(scopedPath, JSON.stringify(scoped, null, 2) + '\n')
 copyFileSync(path.join(root, 'cubby.config.json'), path.join(publicDir, 'cubby.config.json'))
 
 // OpenGraph tags need absolute URLs, so rewrite their origin from the
@@ -478,4 +521,5 @@ if (origin) {
 }
 
 console.log(`sites.json: ${sites.length} app(s): ${sites.map((s) => s.name).join(', ') || '(none)'}`)
+if (scoped.length) console.log(`scoped-sites.json: ${scoped.length} identity-scoped app(s)`)
 console.log('copied cubby.config.json into pb_public/')
