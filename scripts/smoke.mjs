@@ -687,6 +687,83 @@ await test('ai: allowedUsers email globs gate access', async () => {
   }
 })
 
+// A 1x1 PNG, and a JPEG-labelled data URL whose payload decodes to n bytes.
+const PNG_PART = {
+  type: 'image_url',
+  image_url: {
+    url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+  },
+}
+const bytesPart = (n) => ({
+  type: 'image_url',
+  image_url: { url: `data:image/jpeg;base64,${Buffer.alloc(n, 7).toString('base64')}` },
+})
+
+await test('ai: image parts rejected for apps without maxImages', async () => {
+  // Rejected before the rate stamp, so hello's slot is untouched.
+  const res = await fetch(`${BASE}/_cubby/ai/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: impersonated.token },
+    body: JSON.stringify({
+      app: 'hello',
+      messages: [
+        GREETING[0],
+        { role: 'user', content: [{ type: 'text', text: GREETING[1].content }, PNG_PART] },
+      ],
+    }),
+  })
+  assert.equal(res.status, 403)
+  assert.equal((await res.json()).code, 'images_not_allowed')
+})
+
+await test('ai: images, reasoning and web search follow the app policy', async () => {
+  const { writeFileSync, mkdirSync, rmSync } = await import('node:fs')
+  const dir = new URL('../pb_public/_smoke-vision/', import.meta.url)
+  mkdirSync(dir, { recursive: true })
+  try {
+    const fixture = (extra) =>
+      writeFileSync(
+        new URL('cubby.json', dir),
+        JSON.stringify({
+          name: '_smoke-vision',
+          hidden: true,
+          ai: { models: ['deepseek-flash'], rateLimitSeconds: 0, maxTokens: 50, ...extra },
+        })
+      )
+    const chat = async (content, options) => {
+      const res = await fetch(`${BASE}/_cubby/ai/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: impersonated.token },
+        body: JSON.stringify({ app: '_smoke-vision', messages: [{ role: 'user', content }], options }),
+      })
+      return { status: res.status, code: (await res.json()).code }
+    }
+    const through = (r, what) => assert.ok([200, 503].includes(r.status), `${what} (got ${r.status} ${r.code})`)
+
+    fixture({ maxImages: 1, maxImageBytes: 1000, maxChars: 50 })
+    let r = await chat([{ type: 'text', text: 'one' }, PNG_PART, PNG_PART])
+    assert.deepEqual(r, { status: 403, code: 'images_not_allowed' }, 'over the image count')
+    r = await chat([bytesPart(2000)])
+    assert.deepEqual(r, { status: 413, code: 'image_too_large' }, 'over the image size')
+    r = await chat([{ type: 'image_url', image_url: { url: 'https://example.com/shelf.jpg' } }])
+    assert.deepEqual(r, { status: 400, code: 'bad_request' }, 'remote image URLs rejected')
+    assert.ok(PNG_PART.image_url.url.length > 50)
+    through(await chat([{ type: 'text', text: 'What color is this?' }, PNG_PART]), 'maxChars ignores image bytes')
+
+    r = await chat('hi', { reasoning: 'high' })
+    assert.deepEqual(r, { status: 403, code: 'option_not_allowed' }, 'reasoning off by default')
+    r = await chat('hi', { webSearch: true })
+    assert.deepEqual(r, { status: 403, code: 'option_not_allowed' }, 'web search off by default')
+
+    fixture({ reasoning: ['high'], webSearch: { maxResults: 2 } })
+    through(await chat('hi', { reasoning: 'high', webSearch: { maxResults: 5 } }), 'allowed options pass')
+    r = await chat('hi', { reasoning: 'low' })
+    assert.deepEqual(r, { status: 403, code: 'option_not_allowed' }, 'effort outside the list')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 await test('sites: "hidden": "access" cards reach only allowed identities', async () => {
   const { writeFileSync, mkdirSync, rmSync, readFileSync } = await import('node:fs')
   // No underscore: the endpoint skips _-prefixed dirs like every app scan.
