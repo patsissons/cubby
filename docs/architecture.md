@@ -90,10 +90,10 @@ cubby ships as layers, so a page pays only for what it uses:
 | bundle | gz | what it is |
 |---|---|---|
 | `/js/core.js` | 1.5KB | the `cubby` namespace, `CubbyError`, escaping, the widget lifecycle, design tokens. No PocketBase. |
-| `/js/platform.js` | 14.2KB | PocketBase: `config`, `identity`, `db`, `fs`, `ai`, `rooms`. |
+| `/js/platform.js` | 14.5KB | PocketBase: `config`, `identity`, `db`, `fs`, `ai`, `rooms`. |
 | `/js/markdown.js` | 6.0KB | `cubby.markdown.render()`. |
 | `/js/share.js` | 9.5KB | `cubby.share()` icon stack: share / QR / copy link (+ edit / delete). Mostly the vendored QR generator. |
-| `/js/foundation.js` | 15.4KB | **deprecated** all-in-one (core + platform). Still built; do not use it in new apps. |
+| `/js/foundation.js` | 15.7KB | **deprecated** all-in-one (core + platform). Still built; do not use it in new apps. |
 
 Core comes first and the backend is optional, not the other way round —
 widgets like a preview-only markdown editor need no PocketBase at all, so a
@@ -675,12 +675,26 @@ const res = await cubby.ai.chat({
 console.log(res.text, res.usage, res.model, res.provider)
 ```
 
+Message content is a string or an array of parts: `{ type: 'text', text }`
+and `{ type: 'image_url', image_url: { url } }`, where the url must be a
+base64 `data:image/(jpeg|png|webp|gif)` URL (the provider never fetches
+remote images on the deployment's behalf). `cubby.ai.imagePart(fileOrBlob,
+{ maxEdge = 1600, quality = 0.85 })` builds one from a File or Blob: it
+decodes with EXIF orientation, scales the longest edge down to `maxEdge`,
+flattens onto white and encodes a JPEG. Two options ride along with
+`maxTokens`: `reasoning` (an effort level such as `'high'`, sent as
+OpenRouter's `reasoning: { effort, exclude: true }`) and `webSearch` (`true`
+or `{ maxResults }`, sent as the `web` plugin). Responses carry
+`usage.reasoning` (reasoning tokens, already inside `usage.output`) and
+`citations: [{ url, title }]` from web search annotations (`[]` otherwise).
+
 Models are aliases in `cubby.config.json` `ai.models`; unknown aliases throw
 `model_unknown` before any request. Every alias routes through OpenRouter's
 chat completions endpoint (the registry entry's `id` is the OpenRouter model
 id, e.g. `deepseek/deepseek-v4.1-flash`), so one key reaches every vendor.
-The hook resolves the alias, calls OpenRouter with a 60s timeout, and
-normalizes to `{ text, usage: { input, output }, model, provider }`. A missing
+The hook resolves the alias, calls OpenRouter with the app's timeout
+(`timeoutSeconds`, default 60), and normalizes to `{ text, usage: { input,
+output, reasoning }, citations, model, provider }`. A missing
 key returns `provider_unconfigured` naming the env var.
 
 ### Cost controls (per-app policy)
@@ -700,7 +714,12 @@ server-side from the app's committed `cubby.json`:
   "messagePatterns": {              // per-role content regexes (default: none)
     "system": "^You greet people warmly in one short sentence\\.$",
     "user": ["^Say hello to .{1,80}!$", "^Wish .{1,80} a happy birthday!$"]
-  }
+  },
+  "maxImages": 0,                   // image parts per request (default 0: text only)
+  "maxImageBytes": 8388608,         // decoded size cap per image (default 8 MB)
+  "reasoning": [],                  // effort levels callers may request, e.g. ["high"]
+  "webSearch": false,               // true (5 results) or { "maxResults": N } (1..25)
+  "timeoutSeconds": 60              // provider timeout, clamped 10..300
 }
 ```
 
@@ -717,9 +736,17 @@ match at least one of that role's patterns (a single regex or a list), so
 the browser cannot inject arbitrary prompts (unlisted roles are rejected
 too; the hello app's greeting demo works this way). `allowedUsers`
 gates usage to matching signed-in emails (`user_not_allowed`), and the size
-caps return `content_too_long` (413). Checks run before the rate stamp; the
-app name in the request is the caller's claim, so a forged claim can only
-ever reach policy combinations some committed manifest already allows.
+caps return `content_too_long` (413). Content is checked in order: image
+count (`images_not_allowed`, 403), image size (`image_too_large`, 413),
+message count and text length (`maxChars` counts text parts only), then
+patterns, which match each message's text parts joined with newlines. A
+`reasoning` level outside the list, or `webSearch` without the policy key,
+is `option_not_allowed` (403); a requested `maxResults` is clamped to the
+policy's. All of these run before the rate stamp, so a rejected request
+does not spend the caller's slot. The route accepts bodies up to 24 MB,
+enough for two 8 MB images once base64-encoded. The app name in the request
+is the caller's claim, so a forged claim can only ever reach policy
+combinations some committed manifest already allows.
 
 Keys: set `OPENROUTER_API_KEY` in the PocketHost dashboard (instance >
 Secrets), then power the instance off and on.
