@@ -129,7 +129,7 @@ last:
 them in the right order; it only offers modules that are actually built.
 
 Load ONLY what the app uses. `core.js` is 1.5KB and carries no PocketBase;
-`platform.js` is 14.2KB and is where db/fs/ai/rooms/identity live. An app that
+`platform.js` is 14.5KB and is where db/fs/ai/rooms/identity live. An app that
 just renders content needs `core.js` + `markdown.js` and nothing else.
 
 `/js/foundation.js` is the DEPRECATED all-in-one. Never use it in a new app.
@@ -262,6 +262,16 @@ role needs an entry and its content must match,
 so browsers cannot send arbitrary prompts on the deployment's API key (see
 hello's cubby.json for the shape). Declare only the models the app needs.
 
+Images, reasoning and web search are further opt-ins, all off by default:
+`"maxImages": 1` (image parts per request, default 0) with
+`"maxImageBytes"` (decoded size per image, default 8 MB), `"reasoning":
+["high"]` (effort levels callers may request, default none), `"webSearch":
+{ "maxResults": 8 }` (or `true` for 5; caps results per call, max 25), and
+`"timeoutSeconds": 180` (provider timeout, default 60, clamped 10..300; raise
+it for reasoning or search). Reasoning tokens count against `maxTokens`, so
+raise that too. `maxChars` counts text only, and `messagePatterns` match a
+message's text parts joined with newlines.
+
 ```js
 const res = await cubby.ai.chat({
   messages: [
@@ -272,11 +282,25 @@ const res = await cubby.ai.chat({
   options: { maxTokens: 500 },
 })
 res.text                                 // also: res.usage, res.model, res.provider
+
+// Content can also be an array of parts. imagePart() downscales a File or
+// Blob to a JPEG data URL part; never hand-roll the canvas step, and never
+// pass remote image URLs (only data:image URLs are accepted).
+const photo = await cubby.ai.imagePart(file, { maxEdge: 2000 })  // default 1600, quality 0.85
+const rated = await cubby.ai.chat({
+  messages: [{ role: 'user', content: [{ type: 'text', text: 'List the bottles.' }, photo] }],
+  options: { maxTokens: 8000, reasoning: 'high', webSearch: { maxResults: 5 } },
+})
+rated.citations                          // [{url, title}] from web search; [] otherwise
+rated.usage.reasoning                    // reasoning tokens, included in usage.output
 ```
 
 Handle these errors gracefully: `provider_unconfigured` (deployment has no
 key for that provider), `model_not_allowed` (not in the app's allowlist),
-and `rate_limited` (err.retryAfter says how many seconds to wait).
+and `rate_limited` (err.retryAfter says how many seconds to wait). Apps
+using the opt-ins also see `images_not_allowed` (too many images, or none
+allowed), `image_too_large` (413), and `option_not_allowed` (a reasoning
+level or web search the policy does not grant).
 
 ### Share stack: cubby.share (opt-in script)
 

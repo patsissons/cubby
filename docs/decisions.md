@@ -538,3 +538,34 @@ and the smoke tests run on localhost but build against the deployment's
 config, so they see the same cards production does. The cost is that
 changing the domain needs a rebuild, which a domain change already needs
 for its og and JSON-LD origins.
+
+## Images, reasoning and web search are per-app AI opt-ins
+
+The proxy started out text only. A shelf-photo app needs three more things
+from the model: image input, a higher reasoning effort, and web search for
+ratings. Each one costs more per call than plain text, so each is a new key
+in the app's cubby.json `ai` block. Like `models`, they default to off, so
+"AI cost controls are server-enforced and deny-by-default" still holds:
+`maxImages` (0) with `maxImageBytes` (8 MB), `reasoning` (no effort levels),
+`webSearch` (off; a `maxResults` cap when on), and `timeoutSeconds` (60).
+
+- **Data URLs only.** Image parts must be base64 `data:image` URLs. A
+  remote URL would have the provider fetch arbitrary addresses on the
+  deployment's key and bill, and the policy could not size-check it.
+  `cubby.ai.imagePart` makes the data URL client-side, so apps never
+  hand-roll the canvas step.
+- **`maxChars` counts text only.** Images have their own count and byte
+  caps. Counting base64 characters against a text cap would force apps to
+  raise `maxChars` far enough to defeat its purpose. `messagePatterns` test
+  the joined text parts, so a template app that also allows images still
+  cannot carry free text.
+- **A 24 MB route body limit.** It fits two 8 MB images once
+  base64-encoded, plus text. It is a route-level ceiling; the per-app caps
+  do the real limiting after the body is parsed.
+- **Reasoning is sent with `exclude: true`.** Apps read only the answer,
+  and returning the trace would multiply response size for nothing.
+  Reasoning tokens still bill as output and count against `max_tokens`,
+  so the response reports them as `usage.reasoning`.
+- **Validation is pure.** The checks live in `pb_hooks/lib/ai.js` and run
+  before the rate stamp, the same as the earlier content checks, so Node
+  tests cover them without a server or key.
