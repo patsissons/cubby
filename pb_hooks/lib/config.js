@@ -29,21 +29,45 @@ function resolveModel(alias) {
  * Load an app's AI policy from its committed manifest. Deny-by-default:
  * apps without an ai block (or without a manifest at all) get no models.
  *
+ * @param {string} app
+ */
+function loadAppAiPolicy(app) {
+  let manifest = {}
+  try {
+    manifest = JSON.parse(toString($os.readFile(`${__hooks}/../pb_public/${app}/cubby.json`)))
+  } catch (err) {
+    return parseAiPolicy(null)
+  }
+  return parseAiPolicy(manifest.ai)
+}
+
+/**
+ * Normalize a cubby.json "ai" block into a policy with every default filled
+ * in. Pure, so Node tests can call it.
+ *
  * Fields (all optional in the manifest):
  *   models           allowlist of registry aliases (default [])
  *   allowAnonymous   default false
  *   rateLimitSeconds min seconds between prompts per caller (default 60; 0 disables)
  *   allowedUsers     email globs, e.g. ["me@x.com", "*@corp.com"] (default []: any signed-in user)
- *   maxChars         total content length cap across messages (default 4000; 0 disables)
+ *   maxChars         total text length cap across messages (default 4000; 0
+ *                    disables); image parts do not count toward it
  *   maxMessages      message count cap (default 16)
  *   maxTokens        cap on options.maxTokens (default 1000)
  *   messagePatterns  role -> regex or list of regexes (message must match
  *                    at least one); when present, EVERY message's role must
  *                    have an entry (closes the unlisted-role injection hole)
+ *   maxImages        image parts allowed per request (default 0: none)
+ *   maxImageBytes    decoded size cap per image (default 8 MB)
+ *   reasoning        reasoning effort levels callers may request, e.g.
+ *                    ["high"] (default []: none)
+ *   webSearch        false (default), true, or { maxResults: N } (1..25;
+ *                    true means 5): the per-call cap on web search results
+ *   timeoutSeconds   provider request timeout (default 60, clamped 10..300)
  *
- * @param {string} app
+ * @param {object|null|undefined} ai the manifest's "ai" block
  */
-function loadAppAiPolicy(app) {
+function parseAiPolicy(ai) {
   const defaults = {
     models: [],
     allowAnonymous: false,
@@ -53,15 +77,20 @@ function loadAppAiPolicy(app) {
     maxMessages: 16,
     maxTokens: 1000,
     messagePatterns: null,
+    maxImages: 0,
+    maxImageBytes: 8 * 1024 * 1024,
+    reasoning: [],
+    webSearch: null,
+    timeoutSeconds: 60,
   }
-  let manifest = {}
-  try {
-    manifest = JSON.parse(toString($os.readFile(`${__hooks}/../pb_public/${app}/cubby.json`)))
-  } catch (err) {
-    return defaults
-  }
-  const ai = manifest.ai || {}
+  if (!ai || typeof ai !== 'object') return defaults
   const num = (value, fallback) => (typeof value === 'number' && value >= 0 ? value : fallback)
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, Math.floor(value)))
+  let webSearch = null
+  if (ai.webSearch === true) webSearch = { maxResults: 5 }
+  else if (ai.webSearch && typeof ai.webSearch === 'object' && typeof ai.webSearch.maxResults === 'number') {
+    webSearch = { maxResults: clamp(ai.webSearch.maxResults, 1, 25) }
+  }
   return {
     models: Array.isArray(ai.models) ? ai.models.map(String) : defaults.models,
     allowAnonymous: ai.allowAnonymous === true,
@@ -74,6 +103,11 @@ function loadAppAiPolicy(app) {
       ai.messagePatterns && typeof ai.messagePatterns === 'object' && Object.keys(ai.messagePatterns).length
         ? ai.messagePatterns
         : null,
+    maxImages: Math.floor(num(ai.maxImages, defaults.maxImages)),
+    maxImageBytes: num(ai.maxImageBytes, defaults.maxImageBytes) || defaults.maxImageBytes,
+    reasoning: Array.isArray(ai.reasoning) ? ai.reasoning.map(String) : defaults.reasoning,
+    webSearch,
+    timeoutSeconds: clamp(num(ai.timeoutSeconds, defaults.timeoutSeconds), 10, 300),
   }
 }
 
@@ -229,6 +263,7 @@ module.exports = {
   loadCubbyConfig,
   resolveModel,
   loadAppAiPolicy,
+  parseAiPolicy,
   globMatches,
   emailMatches,
   deploymentHosts,
