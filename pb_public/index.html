@@ -42,6 +42,113 @@
         padding: 4.5rem 0 2.5rem;
       }
 
+      header .wrap {
+        position: relative;
+      }
+
+      .account {
+        position: absolute;
+        top: -3.25rem;
+        right: 0;
+        z-index: 70;
+      }
+
+      .account[hidden] {
+        display: none;
+      }
+
+      .account-toggle {
+        font: inherit;
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--fg);
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        min-height: 2.25rem;
+        padding: 0 0.95rem;
+        display: block;
+        cursor: pointer;
+        box-shadow: var(--shadow);
+      }
+
+      .account-toggle.signed-in {
+        width: 2.25rem;
+        padding: 0;
+        overflow: hidden;
+        color: var(--accent);
+        background: var(--accent-soft);
+      }
+
+      .account-toggle img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .account-toggle:hover,
+      .account-toggle[aria-expanded='true'] {
+        border-color: var(--accent);
+      }
+
+      .account-menu {
+        position: absolute;
+        top: calc(100% + 0.45rem);
+        right: 0;
+        width: 15rem;
+        max-width: calc(100vw - 2.5rem);
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 0.6rem;
+        box-shadow: var(--shadow-hover);
+      }
+
+      .account-menu[hidden] {
+        display: none;
+      }
+
+      .account-menu button {
+        font: inherit;
+        font-size: 0.92rem;
+        color: var(--fg);
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 0.5rem 0.7rem;
+        cursor: pointer;
+      }
+
+      .account-menu button:hover:not(:disabled) {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      .account-menu button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+
+      .account-who,
+      .account-error {
+        margin: 0;
+        padding: 0 0.15rem;
+        font-size: 0.85rem;
+        overflow-wrap: anywhere;
+      }
+
+      .account-who {
+        color: var(--muted);
+      }
+
+      .account-error {
+        color: var(--accent);
+      }
+
       .wordmark {
         display: flex;
         align-items: baseline;
@@ -295,6 +402,16 @@
     <noscript data-cubby-content><p>This page renders with JavaScript. Read the app list as markdown at <a href="/_cubby/content">/_cubby/content</a>. Any app reads the same way at /_cubby/content/&lt;app&gt;, and its deep link /&lt;app&gt;/#/&lt;route&gt; at /_cubby/content/&lt;app&gt;/&lt;route&gt;.</p></noscript>
     <header>
       <div class="wrap">
+        <div class="account" id="account" hidden>
+          <button
+            class="account-toggle"
+            id="account-toggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="account-menu"
+          ></button>
+          <div class="account-menu" id="account-menu" hidden></div>
+        </div>
         <div class="wordmark">
           <h1><span class="tilt">c</span>ubby</h1>
         </div>
@@ -521,6 +638,114 @@
           refresh()
         }
 
+        // Account button: shows who is signed in and opens a small menu with
+        // the sign-in providers or sign-out. Hidden when a deployment has no
+        // providers and nobody is signed in, since it would offer nothing.
+        const PROVIDER_NAMES = { github: 'GitHub' }
+
+        function setupAccount() {
+          const account = document.getElementById('account')
+          const toggle = document.getElementById('account-toggle')
+          const menu = document.getElementById('account-menu')
+          const providers = cubby.config?.oauthProviders || []
+          let shownId
+
+          function setOpen(open) {
+            menu.hidden = !open
+            toggle.setAttribute('aria-expanded', String(open))
+            if (open) menu.querySelector('button')?.focus()
+          }
+
+          function menuButton(text, onClick) {
+            const btn = document.createElement('button')
+            btn.type = 'button'
+            btn.textContent = text
+            btn.addEventListener('click', onClick)
+            return btn
+          }
+
+          function paintSignedOut() {
+            const error = document.createElement('p')
+            error.className = 'account-error'
+            error.setAttribute('role', 'alert')
+            error.hidden = true
+            const buttons = providers.map((provider) => {
+              const name = PROVIDER_NAMES[provider] || provider.charAt(0).toUpperCase() + provider.slice(1)
+              // login() must start inside the click: the SDK opens its popup
+              // right away, and an earlier await would get it blocked.
+              return menuButton(`Sign in with ${name}`, async () => {
+                error.hidden = true
+                for (const btn of buttons) btn.disabled = true
+                try {
+                  await cubby.identity.login(provider)
+                } catch (err) {
+                  console.warn('sign-in did not finish', err)
+                  for (const btn of buttons) btn.disabled = false
+                  setOpen(true)
+                  error.textContent = 'Sign-in did not finish.'
+                  error.hidden = false
+                }
+              })
+            })
+            menu.replaceChildren(...buttons, error)
+            toggle.classList.remove('signed-in')
+            toggle.removeAttribute('aria-label')
+            toggle.removeAttribute('title')
+            toggle.textContent = 'Sign in'
+          }
+
+          function paintSignedIn(user) {
+            const who = document.createElement('p')
+            who.className = 'account-who'
+            who.textContent = user.email || user.name || 'Signed in'
+            menu.replaceChildren(who, menuButton('Sign out', () => cubby.identity.logout()))
+            const accountLabel = `Account: ${user.email || user.name || 'signed in'}`
+            toggle.classList.add('signed-in')
+            toggle.setAttribute('aria-label', accountLabel)
+            toggle.title = accountLabel
+            toggle.textContent = (user.name || user.email || '?').charAt(0).toUpperCase()
+            if (user.avatar) {
+              // Swap in on load, so a missing picture just leaves the initial.
+              const img = new Image()
+              img.alt = ''
+              img.addEventListener('load', () => {
+                if (shownId === user.id) toggle.replaceChildren(img)
+              })
+              img.src = cubby.db.raw.files.getURL(user, user.avatar)
+            }
+          }
+
+          toggle.addEventListener('click', () => {
+            const error = menu.querySelector('.account-error')
+            if (error) error.hidden = true
+            setOpen(menu.hidden)
+          })
+          document.addEventListener('click', (e) => {
+            if (!account.contains(e.target)) setOpen(false)
+          })
+          document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape' || menu.hidden) return
+            setOpen(false)
+            toggle.focus()
+          })
+          account.addEventListener('focusout', (e) => {
+            if (e.relatedTarget && !account.contains(e.relatedTarget)) setOpen(false)
+          })
+
+          // Keyed on the id: a token refresh must not close an open menu.
+          cubby.identityChanged((user) => {
+            const id = user?.id ?? null
+            if (id === shownId) return
+            shownId = id
+            const hadFocus = menu.contains(document.activeElement)
+            if (user) paintSignedIn(user)
+            else paintSignedOut()
+            account.hidden = !user && !providers.length
+            setOpen(false)
+            if (hadFocus) toggle.focus()
+          })
+        }
+
         // Live flourish: presence count in the root lobby via the platform's
         // own rooms API. Signed-in visitors join; everyone else just watches.
         const label = document.getElementById('presence-label')
@@ -531,6 +756,7 @@
             document.title = cubby.config.title
           }
           cubby.identityChanged(loadScoped)
+          setupAccount()
           const lobby = cubby.rooms.room('lobby')
           const render = () => {
             const n = lobby.users.length
@@ -540,9 +766,28 @@
           }
           lobby.on('user.join', render)
           lobby.on('user.leave', render)
+          lobby.on('room.sync', render)
           await lobby.watch()
-          if (cubby.identity.user) await lobby.join()
           render()
+          // Follow identity, not just the state at load. Leaving also drops the
+          // watch (logout's own hook does this too), so watching resumes after.
+          let lobbyUserId = null
+          cubby.identityChanged(async (user) => {
+            const id = user?.id ?? null
+            if (id === lobbyUserId) return
+            lobbyUserId = id
+            try {
+              if (id) {
+                await lobby.join()
+              } else {
+                await lobby.leave()
+                await lobby.watch()
+              }
+            } catch (err) {
+              console.warn('presence unavailable', err)
+              label.textContent = 'presence offline'
+            }
+          })
         } catch (err) {
           console.warn('presence unavailable', err)
           label.textContent = 'presence offline'

@@ -1029,6 +1029,9 @@ The discovery site builds its cards from sites.json (title, description,
 icon, category, tags, and an `added` date stamped once per app by the
 manifest build), offers search across all of those fields, and sorts by
 name, newest, most visited, or recently used using the app_usage rows.
+A button at its top right shows who is signed in and opens a menu to sign in
+with any `cubby.config.json` `oauthProviders` entry, or to sign out; the
+scoped cards and lobby presence follow identity changes without a reload.
 
 `"hidden"` in `cubby.json` picks who sees an app's card:
 
