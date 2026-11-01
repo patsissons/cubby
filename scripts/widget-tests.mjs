@@ -1604,6 +1604,52 @@ await test('share button uses the native sheet when present, copy otherwise', as
   same(copied2, [SHARE_URL], 'no navigator.share -> sharing degrades to copy')
 })
 
+const stubNavigator = (p, name, value) =>
+  Object.defineProperty(p.window.navigator, name, { value, configurable: true })
+
+await test('share sends a url the sheet accepts as a url', async () => {
+  const { p, copied } = mountShare({ title: 'A Thing' })
+  const shared = []
+  stubNavigator(p, 'canShare', () => true)
+  stubNavigator(p, 'share', (data) => (shared.push(data), Promise.resolve()))
+  p.document.querySelector('[aria-label^="share"]').click()
+  await new Promise((r) => setTimeout(r, 0))
+  same(shared, [{ title: 'A Thing', url: SHARE_URL }])
+  same(copied, [])
+})
+
+await test('share sends a url the sheet refuses as text', async () => {
+  const url = 'someapp://setup?token=abc'
+  const { p, copied } = mountShare({ title: 'A Thing', url })
+  const shared = []
+  stubNavigator(p, 'canShare', (data) => !data.url)
+  stubNavigator(p, 'share', (data) => (shared.push(data), Promise.resolve()))
+  p.document.querySelector('[aria-label^="share"]').click()
+  await new Promise((r) => setTimeout(r, 0))
+  same(shared, [{ title: 'A Thing', text: url }])
+  same(copied, [], 'the sheet took it, so nothing is copied')
+})
+
+await test('share copies when the sheet fails, not when it is cancelled', async () => {
+  const reject = (name) => () => Promise.reject(new DOMException('no', name))
+
+  const { p, copied } = mountShare()
+  stubNavigator(p, 'share', reject('AbortError'))
+  const cancelled = p.document.querySelector('[aria-label^="share"]')
+  cancelled.click()
+  await new Promise((r) => setTimeout(r, 0))
+  same(copied, [], 'cancelling the sheet copies nothing')
+  assert.ok(!cancelled.classList.contains('ok'))
+
+  const { p: p2, copied: copied2 } = mountShare()
+  stubNavigator(p2, 'share', reject('TypeError'))
+  const failed = p2.document.querySelector('[aria-label^="share"]')
+  failed.click()
+  await new Promise((r) => setTimeout(r, 0))
+  same(copied2, [SHARE_URL], 'a failed share degrades to copy')
+  assert.ok(failed.classList.contains('ok'))
+})
+
 await test('share QR button opens a dialog with the code and closes clean', () => {
   const { p } = mountShare({ label: '/app/thing' })
   p.document.querySelector('[aria-label^="QR"]').click()

@@ -85,10 +85,16 @@ export function createShare() {
     ctx.on(shareBtn, 'click', async () => {
       // The native sheet where it exists (mobile, some desktops); otherwise
       // sharing degrades to copying, which is what people reach for anyway.
-      if (typeof win.navigator.share === 'function') {
-        await win.navigator.share({ title, url }).catch(() => {})
-      } else {
-        await copy(shareBtn)
+      if (typeof win.navigator.share !== 'function') return copy(shareBtn)
+      // The sheet's url field takes only http(s); an app's own scheme (a setup
+      // link) is rejected before any sheet shows, so it travels as text.
+      const unshareable = win.navigator.canShare?.({ title, url }) === false
+      try {
+        await win.navigator.share(unshareable ? { title, text: url } : { title, url })
+      } catch (err) {
+        // Cancelling the sheet is an answer; anything else must not look like
+        // a dead button.
+        if (err?.name !== 'AbortError') await copy(shareBtn)
       }
     })
 

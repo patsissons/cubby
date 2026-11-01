@@ -321,6 +321,8 @@ cubby.share(el, {
 
 Guests get three buttons, owners five - the app decides by passing (or not
 passing) the handlers; real authorization stays in the collection rules.
+A custom-scheme `url` (`myapp://...`) goes to the native sheet as text, since
+sheets take only http(s) URLs.
 
 ### Rooms: cubby.rooms
 
