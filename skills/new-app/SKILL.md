@@ -314,13 +314,17 @@ cubby.share(el, {
   url: `${location.origin}/myapp/${slug}`,  // required, absolute
   label: `/myapp/${slug}`,   // aria labels + QR heading (default: url)
   title: rec.title,          // native share sheet title (default: label)
+  share: false,              // no share button, for a url with a secret in it
+  qr: false,                 // no QR code button
+  copy: false,               // no copy link button
   onEdit: () => { ... },     // passing a handler is what shows the button
   onDelete: () => { ... },   // ditto; run your own confirm() inside
 })
 ```
 
-Guests get three buttons, owners five - the app decides by passing (or not
-passing) the handlers; real authorization stays in the collection rules.
+Guests get three buttons, owners five, less any the app turns off - the app
+decides by passing (or not passing) the handlers; real authorization stays in
+the collection rules.
 A custom-scheme `url` (`myapp://...`) goes to the native sheet as text, since
 sheets take only http(s) URLs.
 
