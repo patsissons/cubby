@@ -13,6 +13,7 @@ import { qrcode } from './qrcode.js'
  *     url: `${location.origin}/hang/${slug}`,
  *     label: `/hang/${slug}`,          // aria labels + QR heading (default: url)
  *     title: event.title,              // native share sheet title (default: label)
+ *     share: false,                    // no share button, for a url with a secret in it
  *     onEdit: () => { ... },           // presence of the handler shows the button
  *     onDelete: () => { ... },         // ditto; confirm() is the app's business
  *   })
@@ -81,22 +82,24 @@ export function createShare() {
       }
     }
 
-    const shareBtn = button('share', `share ${label}`)
-    ctx.on(shareBtn, 'click', async () => {
-      // The native sheet where it exists (mobile, some desktops); otherwise
-      // sharing degrades to copying, which is what people reach for anyway.
-      if (typeof win.navigator.share !== 'function') return copy(shareBtn)
-      // The sheet's url field takes only http(s); an app's own scheme (a setup
-      // link) is rejected before any sheet shows, so it travels as text.
-      const unshareable = win.navigator.canShare?.({ title, url }) === false
-      try {
-        await win.navigator.share(unshareable ? { title, text: url } : { title, url })
-      } catch (err) {
-        // Cancelling the sheet is an answer; anything else must not look like
-        // a dead button.
-        if (err?.name !== 'AbortError') await copy(shareBtn)
-      }
-    })
+    if (options.share !== false) {
+      const shareBtn = button('share', `share ${label}`)
+      ctx.on(shareBtn, 'click', async () => {
+        // The native sheet where it exists (mobile, some desktops); otherwise
+        // sharing degrades to copying, which is what people reach for anyway.
+        if (typeof win.navigator.share !== 'function') return copy(shareBtn)
+        // The sheet's url field takes only http(s); an app's own scheme (a setup
+        // link) is rejected before any sheet shows, so it travels as text.
+        const unshareable = win.navigator.canShare?.({ title, url }) === false
+        try {
+          await win.navigator.share(unshareable ? { title, text: url } : { title, url })
+        } catch (err) {
+          // Cancelling the sheet is an answer; anything else must not look like
+          // a dead button.
+          if (err?.name !== 'AbortError') await copy(shareBtn)
+        }
+      })
+    }
 
     const qrBtn = button('qr', `QR code for ${label}`)
     ctx.on(qrBtn, 'click', () => {

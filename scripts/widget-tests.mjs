@@ -1569,6 +1569,15 @@ await test('share renders three guest buttons; handlers add edit and delete', ()
   ])
 })
 
+await test('share: false leaves out only the share button', () => {
+  const { p } = mountShare({ share: false, onEdit: () => {} })
+  assert.deepEqual(p.errors, [])
+  const labels = [...p.document.querySelectorAll('.cubby-share-btn')].map((b) =>
+    b.getAttribute('aria-label')
+  )
+  same(labels, [`QR code for ${SHARE_URL}`, `copy link to ${SHARE_URL}`, `edit ${SHARE_URL}`])
+})
+
 await test('share without a url throws bad_request', () => {
   const p = page({ html: '<div id="host"></div>', scripts: SHARE_SCRIPTS })
   assert.throws(

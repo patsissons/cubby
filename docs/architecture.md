@@ -540,6 +540,7 @@ cubby.share('#actions', {
   url: `${location.origin}/hang/${slug}`, // required, absolute
   label: `/hang/${slug}`,   // aria labels + QR heading (default: url)
   title: event.title,       // native share sheet title (default: label)
+  share: false,             // no share button, for a url with a secret in it
   onEdit: () => { ... },    // passing a handler is what shows the button
   onDelete: () => { ... },  // ditto; any confirm() is the app's business
 })

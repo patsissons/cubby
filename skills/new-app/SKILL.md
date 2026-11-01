@@ -314,6 +314,7 @@ cubby.share(el, {
   url: `${location.origin}/myapp/${slug}`,  // required, absolute
   label: `/myapp/${slug}`,   // aria labels + QR heading (default: url)
   title: rec.title,          // native share sheet title (default: label)
+  share: false,              // no share button, for a url with a secret in it
   onEdit: () => { ... },     // passing a handler is what shows the button
   onDelete: () => { ... },   // ditto; run your own confirm() inside
 })
