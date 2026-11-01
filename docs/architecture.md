@@ -550,7 +550,9 @@ owner — the app expresses it by passing (or not passing) the handlers, and
 real authorization stays in the collection rules. The handle is a standard
 widget (`destroy()` removes the stack, its listeners, and any open QR
 dialog). The QR generator (Kazuhiko Arase, MIT) is vendored inside the
-bundle; nothing is fetched.
+bundle; nothing is fetched. Native share sheets take only http(s) URLs, so a
+custom-scheme link goes to the sheet as text; if the sheet fails for any reason
+but cancelling, the share button copies the link instead.
 
 ## Nav: cubby.nav (opt-in)
 
