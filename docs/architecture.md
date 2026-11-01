@@ -541,13 +541,16 @@ cubby.share('#actions', {
   label: `/hang/${slug}`,   // aria labels + QR heading (default: url)
   title: event.title,       // native share sheet title (default: label)
   share: false,             // no share button, for a url with a secret in it
+  qr: false,                // no QR code button
+  copy: false,              // no copy link button
   onEdit: () => { ... },    // passing a handler is what shows the button
   onDelete: () => { ... },  // ditto; any confirm() is the app's business
 })
 ```
 
-Guests see three buttons, owners five: the widget never decides who is an
-owner — the app expresses it by passing (or not passing) the handlers, and
+Guests see three buttons, owners five, less any the app turns off: the widget
+never decides who is an owner — the app expresses it by passing (or not
+passing) the handlers, and
 real authorization stays in the collection rules. The handle is a standard
 widget (`destroy()` removes the stack, its listeners, and any open QR
 dialog). The QR generator (Kazuhiko Arase, MIT) is vendored inside the

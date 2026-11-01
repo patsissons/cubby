@@ -14,12 +14,15 @@ import { qrcode } from './qrcode.js'
  *     label: `/hang/${slug}`,          // aria labels + QR heading (default: url)
  *     title: event.title,              // native share sheet title (default: label)
  *     share: false,                    // no share button, for a url with a secret in it
+ *     qr: false,                       // no QR code button
+ *     copy: false,                     // no copy link button
  *     onEdit: () => { ... },           // presence of the handler shows the button
  *     onDelete: () => { ... },         // ditto; confirm() is the app's business
  *   })
  *
- * Guests see three buttons; owners see five. The widget never decides who is
- * an owner - the app expresses that by passing (or not passing) the handlers.
+ * Guests see three buttons; owners see five, less any the app turns off. The
+ * widget never decides who is an owner - the app expresses that by passing (or
+ * not passing) the handlers.
  */
 
 // Static, widget-authored icon markup (feather icons, MIT). This innerHTML
@@ -101,38 +104,42 @@ export function createShare() {
       })
     }
 
-    const qrBtn = button('qr', `QR code for ${label}`)
-    ctx.on(qrBtn, 'click', () => {
-      const qr = qrcode(0, 'M')
-      qr.addData(url)
-      qr.make()
-      const dialog = doc.createElement('dialog')
-      dialog.className = 'cubby-share-qr'
-      const heading = doc.createElement('h2')
-      heading.textContent = label
-      const img = doc.createElement('img')
-      img.src = qr.createDataURL(6, 4)
-      img.alt = `QR code for ${url}`
-      const urlLine = doc.createElement('p')
-      urlLine.className = 'cubby-share-qr-url'
-      urlLine.textContent = url
-      const close = doc.createElement('button')
-      close.type = 'button'
-      close.textContent = 'close'
-      const closeRow = doc.createElement('p')
-      closeRow.append(close)
-      dialog.append(heading, img, urlLine, closeRow)
-      close.addEventListener('click', () => dialog.close())
-      dialog.addEventListener('close', () => dialog.remove())
-      doc.body.append(dialog)
-      // jsdom (and older engines) lack showModal; open the light way there.
-      if (typeof dialog.showModal === 'function') dialog.showModal()
-      else dialog.setAttribute('open', '')
-      ctx.own(() => dialog.remove())
-    })
+    if (options.qr !== false) {
+      const qrBtn = button('qr', `QR code for ${label}`)
+      ctx.on(qrBtn, 'click', () => {
+        const qr = qrcode(0, 'M')
+        qr.addData(url)
+        qr.make()
+        const dialog = doc.createElement('dialog')
+        dialog.className = 'cubby-share-qr'
+        const heading = doc.createElement('h2')
+        heading.textContent = label
+        const img = doc.createElement('img')
+        img.src = qr.createDataURL(6, 4)
+        img.alt = `QR code for ${url}`
+        const urlLine = doc.createElement('p')
+        urlLine.className = 'cubby-share-qr-url'
+        urlLine.textContent = url
+        const close = doc.createElement('button')
+        close.type = 'button'
+        close.textContent = 'close'
+        const closeRow = doc.createElement('p')
+        closeRow.append(close)
+        dialog.append(heading, img, urlLine, closeRow)
+        close.addEventListener('click', () => dialog.close())
+        dialog.addEventListener('close', () => dialog.remove())
+        doc.body.append(dialog)
+        // jsdom (and older engines) lack showModal; open the light way there.
+        if (typeof dialog.showModal === 'function') dialog.showModal()
+        else dialog.setAttribute('open', '')
+        ctx.own(() => dialog.remove())
+      })
+    }
 
-    const linkBtn = button('link', `copy link to ${label}`)
-    ctx.on(linkBtn, 'click', () => copy(linkBtn))
+    if (options.copy !== false) {
+      const linkBtn = button('link', `copy link to ${label}`)
+      ctx.on(linkBtn, 'click', () => copy(linkBtn))
+    }
 
     if (typeof options.onEdit === 'function') {
       ctx.on(button('edit', `edit ${label}`), 'click', options.onEdit)

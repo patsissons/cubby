@@ -1569,13 +1569,28 @@ await test('share renders three guest buttons; handlers add edit and delete', ()
   ])
 })
 
-await test('share: false leaves out only the share button', () => {
-  const { p } = mountShare({ share: false, onEdit: () => {} })
-  assert.deepEqual(p.errors, [])
-  const labels = [...p.document.querySelectorAll('.cubby-share-btn')].map((b) =>
-    b.getAttribute('aria-label')
-  )
-  same(labels, [`QR code for ${SHARE_URL}`, `copy link to ${SHARE_URL}`, `edit ${SHARE_URL}`])
+await test('share, qr and copy: false each leave out only that button', () => {
+  const labels = (opts) => {
+    const { p } = mountShare(opts)
+    assert.deepEqual(p.errors, [])
+    return [...p.document.querySelectorAll('.cubby-share-btn')].map((b) =>
+      b.getAttribute('aria-label')
+    )
+  }
+  const share = `share ${SHARE_URL}`
+  const qr = `QR code for ${SHARE_URL}`
+  const copy = `copy link to ${SHARE_URL}`
+  same(labels({ share: false, onEdit: () => {} }), [qr, copy, `edit ${SHARE_URL}`])
+  same(labels({ qr: false }), [share, copy])
+  same(labels({ copy: false }), [share, qr])
+  same(labels({ share: false, qr: false, copy: false }), [])
+})
+
+await test('share: false still copies from the copy button', async () => {
+  const { p, copied } = mountShare({ share: false })
+  p.document.querySelector('[aria-label^="copy link"]').click()
+  await new Promise((r) => setTimeout(r, 0))
+  same(copied, [SHARE_URL])
 })
 
 await test('share without a url throws bad_request', () => {
