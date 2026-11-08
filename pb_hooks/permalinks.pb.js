@@ -2,9 +2,15 @@
 // Server-rendered permalinks: the one exception to "routing (there is none)".
 // An app that declares a "permalink" block in its cubby.json gets a real
 // GET /<app>/{slug} route that serves the app's own index.html shell with
-// <title> and OpenGraph tags rewritten from the matching record, so pasted
-// links unfurl in messaging apps (their crawlers do not execute JS). The
-// client app then hydrates from location.pathname as usual.
+// <title> and OpenGraph tags rewritten for that slug, so pasted links unfurl
+// in messaging apps (their crawlers do not execute JS). The client app then
+// hydrates from location.pathname as usual.
+//
+// The tags come from the matching record (record mode: "collection") or from
+// the app's own pb_hooks/apps/<app>/permalink.js (hook mode: "hook": true),
+// for links whose content is computed from the slug rather than stored. The
+// app module only answers "what should this slug say"; serving, escaping,
+// clamping, caching, <base> and not-found handling stay here.
 //
 // Routes are registered at boot from the committed manifests, so declaring a
 // permalink in a NEW app needs a server restart (PocketHost: power cycle),
@@ -51,8 +57,25 @@ function servePermalink(e) {
   let shell = toString($os.readFile(`${publicDir}/${app}/index.html`))
   if (!isHome) shell = shell.replace('<head>', `<head>\n    <base href="/${app}/" />`)
 
-  let record = null
-  if (pl && slug) {
+  const config = loadCubbyConfig()
+  const origin = String(config.domain || config.instanceUrl || '').replace(/\/+$/, '')
+
+  // { title, description, image } for this slug, or null when there is none.
+  let meta = null
+  if (pl && slug && pl.hook) {
+    try {
+      const resolver = require(`${__hooks}/apps/${app}/permalink.js`)
+      meta = lib.hookMeta(resolver.resolve({ app, slug, isHome, origin, request: e.request }), origin)
+    } catch (err) {
+      // A broken resolver must not take the app down: serve the untouched
+      // shell (static OG) so humans still get the app, uncached, and a 500 so
+      // crawlers don't unfurl it (the app root stays a 200, as below).
+      console.log(`[permalinks] ${app}/permalink.js resolve("${slug}") failed:`, err)
+      e.response.header().set('Cache-Control', 'no-store')
+      return e.html(isHome ? 200 : 500, shell)
+    }
+  } else if (pl && slug) {
+    let record = null
     try {
       const filter = pl.filter
         ? `${pl.param} = {:slug} && (${pl.filter})`
@@ -61,44 +84,39 @@ function servePermalink(e) {
     } catch (err) {
       record = null
     }
+    if (record) {
+      meta = {
+        title: lib.stripMarkdown(lib.renderTemplate(pl.title, record), 120),
+        description: lib.stripMarkdown(lib.renderTemplate(pl.description, record)),
+      }
+      const file = pl.image ? record.getString(pl.image) : ''
+      if (file) {
+        // Content stamp: unfurl crawlers and CDNs cache og:image aggressively,
+        // so key the URL to the record's last edit (falls back to a stable
+        // filename-only stamp when the collection has no `updated` field).
+        const stamp = $security.md5(`${file}:${record.getString('updated')}`).slice(0, 8)
+        const thumb = pl.imageThumb ? `thumb=${pl.imageThumb}&` : ''
+        meta.image = `${origin}/api/files/${pl.collection}/${record.id}/${file}?${thumb}v=${stamp}`
+      }
+      // else: the build already rewrote the static og:image to an absolute URL.
+    }
   }
 
-  if (!record && isHome) {
+  if (!meta && isHome) {
     // The app root must never 404: without a home record (nothing shared
     // yet) serve the untouched shell with its static OG block.
     e.response.header().set('Cache-Control', 'public, max-age=300')
     return e.html(200, shell)
   }
-  if (!record) {
+  if (!meta) {
     // Serve the shell so humans get the app's own not-found UI, but with a
     // 404 (and no caching) so crawlers do not unfurl a dead link.
     e.response.header().set('Cache-Control', 'no-store')
     return e.html(404, shell)
   }
 
-  const config = loadCubbyConfig()
-  const origin = String(config.domain || config.instanceUrl || '').replace(/\/+$/, '')
-  const title = lib.escapeHtml(lib.stripMarkdown(lib.renderTemplate(pl.title, record), 120))
-  const description = lib.escapeHtml(lib.stripMarkdown(lib.renderTemplate(pl.description, record)))
-  const setMeta = (html, attr, value) =>
-    html.replace(new RegExp(`((?:property|name)="${attr}"\\s+content=")[^"]*`), `$1${value}`)
-
-  shell = shell.replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`)
-  shell = setMeta(shell, 'og:title', title)
-  shell = setMeta(shell, 'og:description', description)
-  shell = setMeta(shell, 'description', description)
-  shell = setMeta(shell, 'og:url', isHome ? `${origin}/${app}/` : `${origin}/${app}/${slug}`)
-  const file = pl.image ? record.getString(pl.image) : ''
-  if (file) {
-    // Content stamp: unfurl crawlers and CDNs cache og:image aggressively,
-    // so key the URL to the record's last edit (falls back to a stable
-    // filename-only stamp when the collection has no `updated` field).
-    const stamp = $security.md5(`${file}:${record.getString('updated')}`).slice(0, 8)
-    const thumb = pl.imageThumb ? `thumb=${pl.imageThumb}&` : ''
-    const fileUrl = `${origin}/api/files/${pl.collection}/${record.id}/${file}?${thumb}v=${stamp}`
-    shell = setMeta(shell, 'og:image', lib.escapeHtml(fileUrl))
-  }
-  // else: the build already rewrote the static og:image to an absolute URL.
+  meta.url = isHome ? `${origin}/${app}/` : `${origin}/${app}/${slug}`
+  shell = lib.applyOg(shell, meta)
 
   // Bound CDN staleness explicitly; edge behavior for hook routes is not the
   // same as for pb_public files.

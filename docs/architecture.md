@@ -83,6 +83,48 @@ Rules of the road:
 `hello` demos the feature: `/hello/<guestbook-record-id>` is a server-rendered
 OG page for that entry.
 
+#### Hook mode: computed permalinks
+
+Some share links have no record behind them: the slug *is* the content (a
+color in hex, a puzzle seed, a result encoded in the link). For those, an
+app declares hook mode instead of a collection:
+
+```json
+"permalink": { "hook": true, "home": "default" }
+```
+
+and ships `pb_hooks/apps/<app>/permalink.js` (require-only, like
+`content.js` and `mcp.js`):
+
+```js
+function resolve(ctx) {
+  // ctx = { app, slug, isHome, origin, request }
+  const spec = parse(ctx.slug)
+  if (!spec) return null // -> 404 shell, no-store
+  return {
+    title: `...`, // plain text; escaped and clamped (~120) by the platform
+    description: `...`, // plain text; clamped ~150
+    image: `/_cubby/apps/<app>/og/${ctx.slug}.png`, // absolute http(s) or origin-relative
+  }
+}
+module.exports = { resolve }
+```
+
+Everything else is the same handler: the route, the `<base>` injection, the
+in-place tag rewrite (`og:url` is always the canonical `/<app>/<slug>`),
+caching, the dot-free slug contract, `home`, and not-found handling. Absent
+fields keep the shell's static tags. A `resolve` that throws is logged and
+answered with the untouched shell, `no-store`, and a 500 (a 200 for the app
+root), so a bug never takes the app down or gets unfurled. The app module
+only decides what a slug says; it never serves the page, so the URL stays in
+the app's own base and the platform keeps the escaping. An image the app
+draws itself is served from its own `/_cubby/apps/<app>/...` route: only
+crawlers fetch it, so its path never shows.
+
+The build fails a hook-mode app without `permalink.js` and a manifest that
+declares both `collection` and `hook` (at runtime a collection wins, and the
+boot-time route registration skips a hook app whose module is missing).
+
 ## Modules and load order
 
 cubby ships as layers, so a page pays only for what it uses:
