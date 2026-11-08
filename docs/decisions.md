@@ -393,6 +393,19 @@ misses return the shell with a 404 plus `no-store` — humans get the app's
 not-found UI, crawlers refuse to unfurl dead links, and the CDN caches
 neither mistake.
 
+Hook mode came later, for links whose content is computed from the slug
+rather than stored (swatch's share links are hex codes with nothing behind
+them). The alternatives were an app hook registering its own `/<app>/...`
+route, which breaks the `/_cubby/apps/<slug>/` namespace and would collide
+with this handler, or a platform-wide `/s/<slug>` share root, which moves
+the link out of the app's base and needs the slug to name its app. Instead
+the record lookup became one of two sources of OG meta: `"hook": true`
+swaps it for the app's `permalink.js` `resolve(ctx)`, which only says what a
+slug means (title, description, image) and never serves anything, so the
+route, escaping, clamping, caching and not-found behavior stay platform
+code. Zero code per app remains the default; hook mode is opt-in code for
+apps that have nothing to look up.
+
 ## App hooks load from pb_hooks/apps/<slug>/ via a platform shim
 
 Manifest-driven platform hooks cover behavior that is the same shape for

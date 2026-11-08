@@ -108,6 +108,18 @@ record; the app hydrates from `location.pathname`. Requirements:
 `hello` demos it: `/hello/<guestbook-record-id>`. Details in
 `docs/architecture.md` § Permalinks.
 
+**Computed permalinks (hook mode).** When the slug itself is the content (a
+result encoded in the link, nothing stored), declare
+`"permalink": { "hook": true }` (plus optional `"home"`) and ship
+`pb_hooks/apps/<name>/permalink.js` exporting `resolve(ctx)`, where `ctx` is
+`{ app, slug, isHome, origin, request }`. Return `null` for an unknown slug
+(404) or `{ title, description, image }`: plain text, which the platform
+escapes and clamps; `image` absolute or origin-relative. Absent fields keep
+the static tags. Everything else above still applies (OG block, dot-free
+slugs, absolute internal links, restart to register). Don't register
+`/<name>/...` routes in your own hooks; this is the supported way to own URLs
+under the app's base. The build fails `hook: true` without the module.
+
 ## The cubby API
 
 ### Loading it: tag order IS the dependency declaration

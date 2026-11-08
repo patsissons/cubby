@@ -141,9 +141,11 @@ if (origin) {
 }
 
 // Permalink declarations (cubby.json "permalink") make the server rewrite
-// the app's OG tags in place per record, so the tags must exist to rewrite.
-// Fail the build naming the app rather than shipping pages that silently
-// unfurl with nothing.
+// the app's OG tags in place per slug, so the tags must exist to rewrite.
+// Hook mode ("hook": true) resolves slugs in pb_hooks/apps/<slug>/permalink.js,
+// so that module must exist, and a manifest can't declare both modes. Fail
+// the build naming the app rather than shipping pages that silently unfurl
+// with nothing.
 {
   const requiredTags = [
     ['<title>', /<title>[^<]*<\/title>/],
@@ -164,7 +166,12 @@ if (origin) {
     } catch {
       continue // already reported above for visible apps
     }
-    if (!manifest.permalink?.collection) continue
+    const pl = manifest.permalink
+    if (!pl?.collection && pl?.hook !== true) continue
+    if (pl.collection && pl.hook === true) problems.push(`${entry.name}: declares both "collection" and "hook"; pick one`)
+    if (pl.hook === true && !existsSync(path.join(root, 'pb_hooks', 'apps', entry.name, 'permalink.js'))) {
+      problems.push(`${entry.name}: "hook": true needs pb_hooks/apps/${entry.name}/permalink.js`)
+    }
     const page = path.join(publicDir, entry.name, 'index.html')
     const html = existsSync(page) ? readFileSync(page, 'utf8') : ''
     for (const [label, re] of requiredTags) {
@@ -174,7 +181,8 @@ if (origin) {
   if (problems.length) {
     console.error(
       `apps declaring a permalink must ship the full OG tag block in index.html ` +
-        `(copy it from pb_public/hello/index.html):\n  ${problems.join('\n  ')}`
+        `(copy it from pb_public/hello/index.html), and hook-mode apps their ` +
+        `permalink.js:\n  ${problems.join('\n  ')}`
     )
     process.exit(1)
   }
