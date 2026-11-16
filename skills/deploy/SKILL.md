@@ -133,11 +133,19 @@ deploy.yml: idea on your phone to live app with no laptop involved.
   Secrets (or the instance was not restarted after adding it).
 - OAuth popup errors: redirect URI mismatch; it must be exactly
   `https://<HOST>/api/oauth2-redirect` for the origin being used.
-- Deleted files still live after deploy: phio deploys are additive
-  (verified: its "removing folder" output does not actually delete). Remove
-  remote files manually over SFTP (`ftp.pockethost.io:2222`, account email,
-  registered SSH key, path `<instance>/...`), and verify by content since
-  missing static paths fall back to the discovery site with HTTP 200.
+- Deleted files: phio tries to remove paths deleted from the repo on the
+  next deploy, but do not count on it (see docs/decisions.md: files have
+  survived it). Clean up after the deploy, never before: phio skips a file
+  that is already gone, but a folder already removed by hand fails the
+  deploy with `rmdir: Bad Path ... No such directory` before the power
+  cycle (recreate the empty folder over SFTP and rerun). Once deployed, diff
+  the instance against `git ls-tree -r --name-only HEAD -- pb_public
+  pb_hooks pb_migrations` over SFTP (`ftp.pockethost.io:2222`, account
+  email, registered SSH key, path `<instance>/...`) and remove the leftovers
+  by hand. PocketHost's own `pb_hooks/_ph_*` and
+  `pb_migrations/*_pockethost_*` files are expected extras: never delete
+  them. Verify by content, since missing static paths fall back to the
+  discovery site with HTTP 200.
 - Stale `sites.json` after deploy: PocketHost's CDN caches pb_public
   briefly (up to 4 hours; use a `?v=x` query to check origin).
 - Rate limits: 1000 req/hr/IP. Every joined room tab heartbeats ~180/hr.
