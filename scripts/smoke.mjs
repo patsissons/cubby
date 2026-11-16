@@ -966,8 +966,13 @@ await test('content: docs, root, unknown and invalid apps', async () => {
   const docs = await fetch(`${BASE}/_cubby/content/docs`)
   assert.equal(docs.status, 200)
   assert.ok((await docs.text()).includes('## In a nutshell'))
+  // The root lists exactly what sites.json lists: domain-scoped hidden rules
+  // drop hello and docs from it in forks.
   const root = await (await fetch(`${BASE}/_cubby/content`)).text()
-  assert.ok(root.includes('/_cubby/content/hello'), root)
+  const listed = (await fetch(`${BASE}/sites.json?v=${Date.now()}`).then((r) => r.json())).map((site) => site.name)
+  if (listed.includes('hello')) assert.ok(root.includes('/_cubby/content/hello'), root)
+  else assert.ok(!root.includes('/_cubby/content/hello'), 'a hidden app stays out of the root')
+  if (listed[0]) assert.ok(root.includes(`/_cubby/content/${listed[0]}`), root)
   const missing = await fetch(`${BASE}/_cubby/content/not-an-app`)
   assert.equal(missing.status, 404)
   assert.equal((await missing.json()).code, 'not_found')
@@ -1063,7 +1068,11 @@ await test('content: an app with an access block gets nothing (endpoint and MCP)
     assert.ok(!body.includes('nutshell'), 'no content leaks')
     const routed = await fetch(`${BASE}/_cubby/content/docs/anything`)
     assert.equal(routed.status, 403, 'routes are gated too')
-    assert.ok((await (await fetch(`${BASE}/_cubby/content`)).text()).includes('sign-in required'))
+    // The root marks a listed gated app; a fork that hides docs lists nothing.
+    const listed = JSON.parse(readFileSync(new URL('../pb_public/sites.json', import.meta.url), 'utf8'))
+    const root = await (await fetch(`${BASE}/_cubby/content`)).text()
+    if (listed.some((site) => site.name === 'docs')) assert.ok(root.includes('sign-in required'), root)
+    else assert.ok(!root.includes('/_cubby/content/docs'), root)
     if (mcpConfigured) {
       const read = await mcp('/_cubby/mcp', toolCall(19, 'read_app', { app: 'docs' }), MCP_TOKEN)
       assert.equal(read.json.result.isError, true)

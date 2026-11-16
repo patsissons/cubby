@@ -182,6 +182,14 @@ SFTP (ftp.pockethost.io:2222, account email + registered SSH key, paths
 under `<instance>/`). Missing static paths fall back to the discovery
 site with HTTP 200, so verify deletions by content, not status code.
 
+Do that cleanup after the deploy, not before. phio's sync state still
+tries to remove each deleted path: a file already gone is skipped, but a
+folder already gone fails the deploy (`rmdir: Bad Path`) before the power
+cycle (seen 2026-11 after removing a folder over SFTP first; recreating it
+empty and rerunning fixed it). PocketHost adds its own `pb_hooks/_ph_*`
+and `pb_migrations/*_pockethost_*` files to every instance; a diff
+against the repo will show them, and they must stay.
+
 ## Local dev binary pinned to PocketHost's line
 
 scripts/dev.mjs pins PocketBase 0.39.x (PB_VERSION env to override) to match
